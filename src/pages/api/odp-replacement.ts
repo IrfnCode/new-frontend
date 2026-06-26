@@ -1,7 +1,6 @@
 import type { APIRoute } from 'astro';
 import { OdpReplacementModel } from '../../lib/models/OdpReplacementModel';
 import { TechnicianModel } from '../../lib/models/TechnicianModel';
-import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
@@ -15,16 +14,12 @@ function ensureUploadDir() {
 async function saveImage(file: File, prefix: string): Promise<{ url: string; filePath: string }> {
     ensureUploadDir();
     const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-    const filename = `${prefix}_${Date.now()}.webp`;
+    const filename = `${prefix}_${Date.now()}.${ext}`;
     const filePath = path.join(UPLOAD_DIR, filename);
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    // Compress & convert to webp untuk hemat storage
-    await sharp(buffer)
-        .rotate() // Membaca EXIF dan memutar otomatis
-        .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 70 })
-        .toFile(filePath);
+    // Tulis file asli langsung tanpa sharp untuk menghindari native crash di Proxmox LXC
+    await fs.promises.writeFile(filePath, buffer);
 
     return { url: `/uploads/odp/${filename}`, filePath };
 }
