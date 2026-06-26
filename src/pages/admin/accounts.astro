@@ -1,0 +1,255 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+// Security: Only Admin can access this page
+const role = Astro.cookies.get("admin_role")?.value;
+if (role !== "ADMIN") {
+    return Astro.redirect("/admin");
+}
+---
+
+<Layout title="MORENA Admin - Manage Accounts">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="accounts" />
+
+        <main
+            class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500"
+        >
+            <header
+                class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color"
+            >
+                <div class="flex items-center gap-8">
+                    <h2
+                        class="text-xl font-extrabold text-primary font-headline tracking-tight"
+                    >
+                        Access Management
+                    </h2>
+                </div>
+                <button
+                    id="addAccountBtn"
+                    class="bg-primary text-white px-6 py-2.5 rounded-full font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-sm"
+                >
+                    <span class="material-symbols-outlined text-sm"
+                        >person_add</span
+                    >
+                    <span>New Account</span>
+                </button>
+            </header>
+
+            <div class="p-8 space-y-6">
+                <div
+                    class="bg-surface-container-lowest rounded-2xl shadow-sm border border-border-color overflow-hidden"
+                >
+                    <table class="w-full text-left">
+                        <thead>
+                            <tr
+                                class="bg-surface-container-low/50 border-b border-border-color text-xs font-bold text-on-surface-variant uppercase tracking-widest"
+                            >
+                                <th class="px-6 py-4">Username</th>
+                                <th class="px-6 py-4">Role</th>
+                                <th class="px-6 py-4">Created Date</th>
+                                <th class="px-6 py-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody
+                            id="accountTableBody"
+                            class="divide-y divide-border-color"
+                        >
+                            <tr
+                                ><td
+                                    colspan="4"
+                                    class="px-6 py-10 text-center text-on-surface-variant animate-pulse italic"
+                                    >Synchronizing accounts...</td
+                                ></tr
+                            >
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="accountModal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-surface/40 backdrop-blur-md"></div>
+        <div
+            class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-surface p-8 rounded-[32px] border border-border-color shadow-2xl"
+        >
+            <h3
+                id="modalTitle"
+                class="text-2xl font-black text-on-surface mb-6 font-headline tracking-tight"
+            >
+                Create Account
+            </h3>
+            <form id="accountForm" class="space-y-5">
+                <input type="hidden" name="id" id="accId" />
+                <input
+                    type="hidden"
+                    name="action"
+                    id="accAction"
+                    value="create"
+                />
+
+                <div class="space-y-2">
+                    <label
+                        class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pl-1"
+                        >Username</label
+                    >
+                    <input
+                        type="text"
+                        name="username"
+                        id="accUsername"
+                        required
+                        class="w-full px-5 py-3.5 bg-surface-container-low rounded-2xl border border-transparent focus:border-primary/30 transition-all outline-none text-sm font-medium"
+                    />
+                </div>
+
+                <div class="space-y-2">
+                    <label
+                        class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pl-1"
+                        >Role</label
+                    >
+                    <select
+                        name="role"
+                        id="accRole"
+                        required
+                        class="w-full px-5 py-3.5 bg-surface-container-low rounded-2xl border border-transparent focus:border-primary/30 transition-all outline-none text-sm font-medium"
+                    >
+                        <option value="ADMIN">ADMIN (Full Access)</option>
+                        <option value="KORLAP">KORLAP (Dashboard, Tiket, Insera, Config)</option>
+                        <option value="HSA">HSA (Dashboard, Tiket, Insera, Config)</option>
+                        <option value="MEMBER">MEMBER (Dashboard, View Tiket)</option>
+                        <option value="HELPDESK">HELPDESK (Tickets Only)</option>
+                        <option value="MODERATOR">MODERATOR (No Account Management)</option>
+                    </select>
+                </div>
+
+                <div class="space-y-2">
+                    <label
+                        class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pl-1"
+                        >Password</label
+                    >
+                    <input
+                        type="password"
+                        name="password"
+                        id="accPassword"
+                        placeholder="Leave blank to keep current"
+                        class="w-full px-5 py-3.5 bg-surface-container-low rounded-2xl border border-transparent focus:border-primary/30 transition-all outline-none text-sm font-medium"
+                    />
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button
+                        type="button"
+                        onclick="document.getElementById('accountModal').classList.add('hidden')"
+                        class="flex-1 py-3.5 rounded-2xl text-xs font-bold text-on-surface-variant bg-surface-container-low hover:bg-surface-container-high transition-all"
+                        >Cancel</button
+                    >
+                    <button
+                        type="submit"
+                        class="flex-1 py-3.5 rounded-2xl text-xs font-bold text-white bg-primary shadow-lg shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all"
+                        >Save Changes</button
+                    >
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script is:inline>
+        async function loadAccounts() {
+            const tbody = document.getElementById("accountTableBody");
+            try {
+                const res = await fetch("/api/manage-accounts");
+                const result = await res.json();
+                if (result.status === "success") {
+                    tbody.innerHTML = result.data
+                        .map(
+                            (acc) => `
+                        <tr class="hover:bg-surface-container-low/50 transition-colors">
+                            <td class="px-6 py-5">
+                                <span class="text-sm font-bold text-on-surface">${acc.username}</span>
+                            </td>
+                            <td class="px-6 py-5">
+                                <span class="text-[10px] font-bold px-3 py-1 bg-primary/10 text-primary rounded-full uppercase tracking-widest">${acc.role}</span>
+                            </td>
+                            <td class="px-6 py-5 text-on-surface-variant text-xs font-medium">
+                                ${new Date(acc.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                            </td>
+                            <td class="px-6 py-5 text-right">
+                                <div class="flex justify-end gap-2 text-on-surface-variant">
+                                    <button onclick="editAccount('${acc.id}', '${acc.username}', '${acc.role}')" class="p-2 rounded-lg hover:bg-primary/10 hover:text-primary transition-all">
+                                        <span class="material-symbols-outlined text-xl">edit</span>
+                                    </button>
+                                    <button onclick="deleteAccount('${acc.id}', '${acc.username}')" class="p-2 rounded-lg hover:bg-error/10 hover:text-error transition-all">
+                                        <span class="material-symbols-outlined text-xl">delete</span>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `,
+                        )
+                        .join("");
+                }
+            } catch (err) {
+                tbody.innerHTML =
+                    '<tr><td colspan="4" class="px-6 py-10 text-center text-error italic">Failed to synchronize account data.</td></tr>';
+            }
+        }
+
+        window.deleteAccount = async (id, name) => {
+            if (
+                !confirm(
+                    `Are you sure you want to remove account "${name}"? Access will be revoked immediately.`,
+                )
+            )
+                return;
+            const fd = new FormData();
+            fd.append("id", id);
+            fd.append("action", "delete");
+            await fetch("/api/manage-accounts", { method: "POST", body: fd });
+            loadAccounts();
+        };
+
+        window.editAccount = (id, user, role) => {
+            document.getElementById("accId").value = id;
+            document.getElementById("accUsername").value = user;
+            document.getElementById("accUsername").disabled = true;
+            document.getElementById("accRole").value = role;
+            document.getElementById("accAction").value = "update";
+            document.getElementById("modalTitle").innerText = "Update Account";
+            document.getElementById("accPassword").placeholder =
+                "New password (optional)";
+            document.getElementById("accountModal").classList.remove("hidden");
+        };
+
+        document.getElementById("addAccountBtn").onclick = () => {
+            document.getElementById("accountForm").reset();
+            document.getElementById("accId").value = "";
+            document.getElementById("accUsername").disabled = false;
+            document.getElementById("accAction").value = "create";
+            document.getElementById("modalTitle").innerText = "Create Account";
+            document.getElementById("accPassword").placeholder =
+                "Password required";
+            document.getElementById("accountModal").classList.remove("hidden");
+        };
+
+        document.getElementById("accountForm").onsubmit = async (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            const res = await fetch("/api/manage-accounts", {
+                method: "POST",
+                body: fd,
+            });
+            const result = await res.json();
+            if (result.status === "success") {
+                document.getElementById("accountModal").classList.add("hidden");
+                loadAccounts();
+            } else {
+                alert(result.message);
+            }
+        };
+
+        document.addEventListener("DOMContentLoaded", loadAccounts);
+    </script>
+</Layout>

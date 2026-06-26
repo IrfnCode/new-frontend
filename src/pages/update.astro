@@ -1,0 +1,831 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { ConfigModel } from "../lib/models/ConfigModel";
+
+const typesData = await ConfigModel.getAllJenis();
+const repairsData = await ConfigModel.getAllPerbaikan();
+
+// Transform to simple arrays for client-side
+const JENIS_LIST = typesData.map(t => t.nama_jenis);
+const RCA_LIST = repairsData.map(r => r.jenis_perbaikan);
+---
+
+<Layout title="MORENA - Update Operasional" useTelegram={true}>
+    <main class="min-h-screen bg-surface font-body p-4 pb-12 relative">
+        <div class="fixed top-6 right-6 z-[60]">
+            <button
+                onclick="window.toggleTheme()"
+                class="w-12 h-12 bg-surface-container-high/80 backdrop-blur-md rounded-full shadow-lg border border-border-color flex items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-95"
+            >
+                <span class="material-symbols-outlined">contrast</span>
+            </button>
+        </div>
+        <div class="max-w-xl mx-auto">
+            <!-- List View -->
+            <div
+                id="listView"
+                class="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500"
+            >
+                <header class="text-center pt-8 space-y-2">
+                    <div
+                        class="inline-flex items-center justify-center w-16 h-16 bg-secondary-container rounded-3xl shadow-lg shadow-secondary/20 mb-4"
+                    >
+                        <span
+                            class="material-symbols-outlined text-secondary text-3xl"
+                            style="font-variation-settings: 'FILL' 1;"
+                            >history_edu</span
+                        >
+                    </div>
+                    <h1
+                        class="text-3xl font-extrabold text-primary font-headline tracking-tight"
+                    >
+                        Update Laporan
+                    </h1>
+                    <p
+                        class="text-on-surface-variant text-sm font-medium uppercase tracking-widest"
+                    >
+                        Active Task Management
+                    </p>
+                </header>
+
+                <div
+                    class="bg-primary/5 border border-primary/20 rounded-2xl p-4 flex gap-4 items-start"
+                >
+                    <span class="material-symbols-outlined text-primary mt-1"
+                        >info</span
+                    >
+                    <p
+                        class="text-xs font-semibold text-primary leading-relaxed"
+                    >
+                        Ketuk pada kartu laporan di bawah untuk melakukan
+                        koreksi atau pembaruan status pengerjaan.
+                    </p>
+                </div>
+
+                <div id="tiketList" class="grid gap-4">
+                    <div
+                        class="flex flex-col items-center justify-center py-20 text-on-surface-variant space-y-4"
+                    >
+                        <div
+                            class="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"
+                        >
+                        </div>
+                        <p
+                            class="text-sm font-bold uppercase tracking-widest animate-pulse"
+                        >
+                            Sinkronisasi Data...
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form View -->
+            <div
+                id="formView"
+                class="hidden space-y-6 animate-in zoom-in-95 duration-300"
+            >
+                <div class="flex items-center justify-between">
+                    <button
+                        id="backBtn"
+                        class="flex items-center gap-2 text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-full active:scale-95 transition-all"
+                    >
+                        <span class="material-symbols-outlined text-sm"
+                            >arrow_back_ios</span
+                        >
+                        Kembali
+                    </button>
+                    <span
+                        id="tiketIdDisplay"
+                        class="text-xs font-black bg-surface-container-high px-4 py-1.5 rounded-full border border-border-color text-on-surface-variant"
+                    ></span>
+                </div>
+
+                <div
+                    class="bg-surface-container-lowest rounded-[2rem] shadow-xl border border-border-color overflow-hidden"
+                >
+                    <form id="updateForm" class="p-8 space-y-8">
+                        <input type="hidden" id="tiket_id" name="tiket_id" />
+
+                        <!-- Section: Temporal Update (Locked) -->
+                        <div class="space-y-6">
+                            <div
+                                class="flex items-center gap-3 border-b border-border-color pb-4"
+                            >
+                                <span
+                                    class="material-symbols-outlined text-primary"
+                                    >schedule</span
+                                >
+                                <h3 class="font-bold text-lg font-headline">
+                                    Catatan Waktu (Locked)
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 opacity-70">
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-black text-on-surface-variant uppercase tracking-widest flex items-center gap-2"
+                                    >
+                                        <span
+                                            class="w-1.5 h-1.5 rounded-full bg-green-500"
+                                        ></span> Jam Open
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="jam_open_display"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-xs font-bold text-on-surface-variant cursor-not-allowed"
+                                        readonly
+                                    />
+                                    <input type="hidden" id="jam_open_val" />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-black text-on-surface-variant uppercase tracking-widest flex items-center gap-2"
+                                    >
+                                        <span
+                                            class="w-1.5 h-1.5 rounded-full bg-red-500"
+                                        ></span> Jam Close
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="jam_close_display"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-xs font-bold text-on-surface-variant cursor-not-allowed"
+                                        readonly
+                                    />
+                                    <input type="hidden" id="jam_close_val" />
+                                </div>
+                            </div>
+                            <p
+                                class="text-[9px] text-on-surface-variant/60 italic font-medium"
+                            >
+                                * Tanggal dan waktu dikunci untuk integritas
+                                data.
+                            </p>
+                        </div>
+
+                        <!-- Section: Content Update -->
+                        <div class="space-y-6">
+                            <div
+                                class="flex items-center gap-3 border-b border-border-color pb-4"
+                            >
+                                <span
+                                    class="material-symbols-outlined text-primary"
+                                    >description</span
+                                >
+                                <h3 class="font-bold text-lg font-headline">
+                                    Detail & RCA
+                                </h3>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                        >Klasifikasi <span class="text-error"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <select
+                                        id="jenis"
+                                        name="jenis"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-bold"
+                                    ></select>
+                                </div>
+                                <div
+                                    class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2"
+                                >
+                                    <div class="space-y-1">
+                                        <label
+                                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                            >ID Pelanggan (Inet) <span
+                                                class="text-error">*</span
+                                            ></label
+                                        >
+                                        <input
+                                            type="text"
+                                            id="no_inet"
+                                            class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-mono font-bold text-primary"
+                                        />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label
+                                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                            >No Tiket (INC/WO) <span
+                                                class="text-error">*</span
+                                            ></label
+                                        >
+                                        <input
+                                            type="text"
+                                            id="no_tiket"
+                                            class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-bold"
+                                        />
+                                    </div>
+                                </div>
+                                <div
+                                    class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2"
+                                >
+                                    <div class="space-y-1">
+                                        <label
+                                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                            >Label ODP <span class="text-error"
+                                                >*</span
+                                            ></label
+                                        >
+                                        <input
+                                            type="text"
+                                            id="odp"
+                                            class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-medium italic"
+                                        />
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label
+                                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                            >Kontak Pelanggan (HP) <span
+                                                class="text-error">*</span
+                                            ></label
+                                        >
+                                        <input
+                                            type="text"
+                                            id="no_hp"
+                                            class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-bold"
+                                        />
+                                    </div>
+                                </div>
+                                <div class="space-y-1 pt-2">
+                                    <label
+                                        class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                        >RCA <span class="text-error">*</span></label
+                                    >
+                                    <select
+                                        id="rca"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-bold"
+                                    ></select>
+                                </div>
+                                <div class="space-y-1 pt-2">
+                                    <label
+                                        class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                        >Catatan Tambahan</label
+                                    >
+                                    <textarea
+                                        id="catatan"
+                                        class="w-full bg-surface-container-high rounded-2xl border-none p-4 text-sm min-h-[100px]"
+                                    ></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section: Material Update -->
+                        <div class="space-y-6">
+                            <div
+                                class="flex items-center gap-3 border-b border-border-color pb-4"
+                            >
+                                <span
+                                    class="material-symbols-outlined text-primary"
+                                    >inventory_2</span
+                                >
+                                <h3 class="font-bold text-lg font-headline">
+                                    Pemakaian Material
+                                </h3>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >Dropcore (M)</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_dropcore"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >Protection (Pcs)</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_protection"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >PS 1:4</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_ps14"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >PS 1:8</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_ps18"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >PS 1:16</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_ps116"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >ODP SOLID</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_odp_solid"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >Patchcore</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_patchcore"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-[10px] font-bold text-on-surface-variant uppercase ml-2"
+                                        >Adaptor ADSC</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="material_adaptor"
+                                        value="0"
+                                        min="0"
+                                        class="w-full bg-surface-container-low rounded-xl border border-border-color p-3 text-center font-bold text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                        >SN ONT</label
+                                    >
+                                    <input
+                                        type="text"
+                                        id="material_sn_ont"
+                                        placeholder="Optional"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-mono"
+                                    />
+                                </div>
+                                <div class="space-y-1">
+                                    <label
+                                        class="text-xs font-bold text-on-surface-variant uppercase tracking-wider ml-2"
+                                        >SN STB</label
+                                    >
+                                    <input
+                                        type="text"
+                                        id="material_sn_stb"
+                                        placeholder="Optional"
+                                        class="w-full bg-surface-container-high rounded-xl border-none p-4 text-sm font-mono"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            id="updateBtn"
+                            class="w-full bg-primary text-white py-5 rounded-2xl font-bold text-lg shadow-xl shadow-primary/30 active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+                        >
+                            <span class="material-symbols-outlined">save</span>
+                            <span>Simpan Perubahan</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Feedback Overlays -->
+    <div
+        id="loadingOverlay"
+        class="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-on-surface/80 backdrop-blur-md text-white space-y-4 hidden"
+    >
+        <div
+            class="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin"
+        >
+        </div>
+        <p class="font-bold tracking-widest text-sm uppercase">Memproses...</p>
+    </div>
+
+    <div
+        id="resultOverlay"
+        class="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-on-surface/50 backdrop-blur-sm hidden"
+    >
+        <div
+            class="bg-surface w-full max-w-sm rounded-[2.5rem] shadow-2xl border border-border-color p-10 text-center space-y-6"
+        >
+            <div
+                id="resultIcon"
+                class="w-20 h-20 mx-auto bg-primary/10 rounded-full flex items-center justify-center text-5xl"
+            >
+                ✅
+            </div>
+            <div class="space-y-2">
+                    <h1
+                        id="resultTitle"
+                        class="text-xl font-black font-headline tracking-tighter"
+                    >
+                    MORENA Update
+                </h1>
+                <p
+                    id="resultMessage"
+                    class="text-on-surface-variant text-sm font-medium leading-relaxed"
+                >
+                </p>
+            </div>
+            <button
+                id="resultActionBtn"
+                class="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-lg"
+                >Selesai</button
+            >
+        </div>
+    </div>
+    <!-- Data bridge for client script -->
+    <div id="jenis-data" data-list={JSON.stringify(JENIS_LIST)} class="hidden"></div>
+    <div id="rca-data" data-list={JSON.stringify(RCA_LIST)} class="hidden"></div>
+
+    <script is:inline>
+        let tg = window.Telegram?.WebApp;
+        let currentUserId = "";
+        let isUpdating = false;
+        let JENIS_OPTIONS = [];
+        let RCA_OPTIONS = [];
+
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                currentUserId = tg.initDataUnsafe.user.id.toString();
+            }
+        }
+
+        function populateOptions(id, max) {
+            const select = document.getElementById(id);
+            if (!select) return;
+            for (let i = 0; i <= max; i++) {
+                const opt = document.createElement("option");
+                const val = i.toString().padStart(2, "0");
+                opt.value = val;
+                opt.text = val;
+                select.appendChild(opt);
+            }
+        }
+
+        async function init() {
+            // Parse options from data bridge (safely after DOM is ready)
+            try {
+                const jenisEl = document.getElementById('jenis-data');
+                const rcaEl = document.getElementById('rca-data');
+                if (jenisEl) JENIS_OPTIONS = JSON.parse(jenisEl.dataset.list || '[]');
+                if (rcaEl) RCA_OPTIONS = JSON.parse(rcaEl.dataset.list || '[]');
+            } catch (e) {
+                console.warn('[INIT] Failed to parse options:', e);
+            }
+
+            if (!currentUserId) {
+                document.getElementById("listView")?.classList.add("hidden");
+                document.getElementById("formView")?.classList.add("hidden");
+                document.getElementById("resultIcon").innerText = "⚠️";
+                document.getElementById("resultTitle").innerText =
+                    "Akses Terkunci";
+                document.getElementById("resultMessage").innerText =
+                    "Silakan buka aplikasi melalui Mini App Telegram MORENA.";
+                document
+                    .getElementById("resultOverlay")
+                    .classList.remove("hidden");
+                const actionBtn = document.getElementById("resultActionBtn");
+                if (actionBtn) actionBtn.style.display = "none";
+                return;
+            }
+
+            const js = document.getElementById("jenis");
+            if (js) JENIS_OPTIONS.forEach((o) => js.add(new Option(o, o)));
+
+            const rs = document.getElementById("rca");
+            if (rs) RCA_OPTIONS.forEach((o) => rs.add(new Option(o, o)));
+
+            document.getElementById("backBtn").onclick = () =>
+                switchView("list");
+            document.getElementById("updateBtn").onclick = handleUpdate;
+
+            await loadTiketList();
+        }
+
+        async function loadTiketList() {
+            const container = document.getElementById("tiketList");
+            try {
+                showLoading(true);
+
+                // Fetch both tiket_simple tickets AND INSERA assigned tickets
+                const [tiketRes, inseraRes] = await Promise.all([
+                    fetch("/api/get-tiket-user", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ user_id: currentUserId, limit: 100 }),
+                    }),
+                    fetchInseraAssignedTickets()
+                ]);
+
+                const tiketResult = await tiketRes.json();
+                const tiketSimple = (tiketResult.status === "success" && Array.isArray(tiketResult.data)) ? tiketResult.data : [];
+                const inseraTickets = inseraRes || [];
+
+                // Merge: avoid duplicates by no_tiket / order_id
+                const seenIds = new Set(tiketSimple.map(t => t.no_tiket).filter(Boolean));
+                const mergedTickets = [...tiketSimple];
+
+                for (const ins of inseraTickets) {
+                    if (!seenIds.has(ins.order_id)) {
+                        // Map INSERA fields to tiket_simple-like structure for rendering
+                        mergedTickets.push({
+                            id: `insera-${ins.id}`,
+                            no_tiket: ins.order_id,
+                            no_inet: ins.service_no || '-',
+                            jenis: ins.ticket_type || ins.customer_type || 'INSERA',
+                            rca: 'ASSIGNED BY HD',
+                            odp: ins.workzone || '-',
+                            no_hp: ins.contact_phone || '-',
+                            jam_open: ins.reported_date || ins.created_at,
+                            jam_close: null,
+                            catatan: ins.summary || '',
+                            _source: 'insera',
+                            _insera_id: ins.id
+                        });
+                        seenIds.add(ins.order_id);
+                    }
+                }
+
+                if (mergedTickets.length > 0) {
+                    container.innerHTML = "";
+                    mergedTickets.forEach((t) => {
+                        const el = document.createElement("div");
+                        const isInsera = t._source === 'insera';
+                        const badgeColor = isInsera ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' : 'bg-primary/10 text-primary border-primary/20';
+                        const sourceTag = isInsera ? ' <span class="text-[8px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-full font-black uppercase">INSERA</span>' : '';
+                        
+                        el.className =
+                            "group bg-surface-container-low p-5 rounded-2xl border border-border-color shadow-sm active:scale-[0.98] transition-all cursor-pointer hover:bg-surface-container-high";
+                        el.innerHTML = `
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] font-black ${badgeColor} px-3 py-1 rounded-full border">#${t.id}</span>
+                                    ${sourceTag}
+                                </div>
+                                <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">${t.jenis || 'REGULER'}</span>
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-sm font-black text-on-surface">${t.no_tiket || '-'}</p>
+                                <p class="text-xs font-semibold text-on-surface-variant">${t.no_inet || '-'}</p>
+                                <div class="flex items-center gap-2 mt-4 pt-3 border-t border-border-color/50">
+                                    <span class="material-symbols-outlined text-xs text-primary">engineering</span>
+                                    <span class="text-xs font-bold text-primary truncate">${t.rca || '-'}</span>
+                                </div>
+                            </div>
+                        `;
+                        if (!isInsera) {
+                            el.onclick = () => loadTiketDetail(t.id);
+                        } else {
+                            // INSERA tickets are read-only in this view
+                            el.onclick = () => {
+                                alert(`Tiket INSERA: ${t.no_tiket}\n\n${t.catatan || 'Tidak ada catatan'}\n\nWorkzone: ${t.odp}\nHP: ${t.no_hp}`);
+                            };
+                        }
+                        container.appendChild(el);
+                    });
+                } else {
+                    container.innerHTML = `
+                        <div class="text-center py-20 px-8 space-y-4">
+                            <span class="material-symbols-outlined text-6xl text-on-surface-variant/30">inbox</span>
+                            <p class="text-sm font-bold text-on-surface-variant uppercase tracking-widest">Belum ada tiket untuk di-update</p>
+                        </div>`;
+                }
+            } catch (err) {
+                console.error("[LOAD_ERROR]", err);
+                container.innerHTML = `
+                    <div class="text-center py-20 px-8 space-y-4">
+                        <span class="material-symbols-outlined text-6xl text-error/20">error</span>
+                        <p class="text-sm font-bold text-error uppercase tracking-widest leading-loose">Gagal sinkronisasi data<br/><span class="text-[10px] opacity-50">${err.message}</span></p>
+                        <button onclick="loadTiketList()" class="mt-4 px-6 py-2 bg-primary/10 text-primary rounded-full text-xs font-bold ring-1 ring-primary/20">Coba Lagi</button>
+                    </div>`;
+            } finally {
+                showLoading(false);
+                const spinner = document.querySelector(
+                    "#tiketList .animate-spin",
+                );
+                if (spinner) spinner.parentElement?.remove();
+            }
+        }
+
+        async function fetchInseraAssignedTickets() {
+            try {
+                const res = await fetch('/api/insera-tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: currentUserId })
+                });
+                const result = await res.json();
+                if (result.status === 'success' && Array.isArray(result.data)) {
+                    return result.data;
+                }
+            } catch (e) {
+                console.warn('[INSERA] Failed to fetch assigned tickets:', e.message);
+            }
+            return [];
+        }
+
+        async function loadTiketDetail(id) {
+            showLoading(true);
+            try {
+                const res = await fetch(`/api/get-tiket-by-id?id=${id}`);
+                const result = await res.json();
+                if (result.status === "success") {
+                    fillForm(result.data);
+                    switchView("form");
+                    document.getElementById("tiketIdDisplay").innerText =
+                        `LAPORAN #${id}`;
+                }
+            } catch (err) {
+                alert("Anomali Data: Gagal memuat detail.");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function fillForm(data) {
+            document.getElementById("tiket_id").value = data.id;
+
+            document.getElementById("jam_open_display").value = data.jam_open
+                ? new Date(data.jam_open).toLocaleString("en-GB")
+                : "-";
+            document.getElementById("jam_close_display").value = data.jam_close
+                ? new Date(data.jam_close).toLocaleString("en-GB")
+                : "-";
+            document.getElementById("jam_open_val").value = data.jam_open || "";
+            document.getElementById("jam_close_val").value =
+                data.jam_close || "";
+
+            document.getElementById("jenis").value = data.jenis;
+            document.getElementById("no_inet").value = data.no_inet;
+            document.getElementById("no_tiket").value = data.no_tiket || "";
+            document.getElementById("rca").value = data.rca;
+            document.getElementById("odp").value = data.odp || "";
+            document.getElementById("no_hp").value = data.no_hp || "";
+            document.getElementById("catatan").value = data.catatan || "";
+            [
+                "material_dropcore",
+                "material_protection",
+                "material_ps14",
+                "material_ps18",
+                "material_ps116",
+                "material_odp_solid",
+                "material_patchcore",
+                "material_adaptor",
+            ].forEach((m) => {
+                document.getElementById(m).value = data[m] || 0;
+            });
+            document.getElementById("material_sn_ont").value =
+                data.material_sn_ont || "";
+            document.getElementById("material_sn_stb").value =
+                data.material_sn_stb || "";
+        }
+
+        async function handleUpdate() {
+            if (isUpdating) return;
+            isUpdating = true;
+            showLoading(true);
+            try {
+                const formData = new FormData();
+                formData.append(
+                    "tiket_id",
+                    document.getElementById("tiket_id").value,
+                );
+                formData.append("user_id", currentUserId);
+                const today = new Date().toISOString().split("T")[0];
+                formData.append(
+                    "jam_open",
+                    document.getElementById("jam_open_val").value || "",
+                );
+                formData.append(
+                    "jam_close",
+                    document.getElementById("jam_close_val").value || "",
+                );
+                [
+                    "jenis",
+                    "no_inet",
+                    "no_tiket",
+                    "rca",
+                    "odp",
+                    "no_hp",
+                    "catatan",
+                ].forEach((f) => {
+                    const el = document.getElementById(f);
+                    if (el) formData.append(f, el.value);
+                });
+                [
+                    "material_dropcore",
+                    "material_protection",
+                    "material_ps14",
+                    "material_ps18",
+                    "material_ps116",
+                    "material_odp_solid",
+                    "material_patchcore",
+                    "material_adaptor",
+                    "material_sn_ont",
+                    "material_sn_stb",
+                ].forEach((m) => {
+                    const el = document.getElementById(m);
+                    if (el) formData.append(m, el.value);
+                });
+
+                const res = await fetch("/api/update-tiket", {
+                    method: "POST",
+                    body: formData,
+                });
+                const result = await res.json();
+                if (result.status === "success") {
+                    showResult(
+                        true,
+                        "Update Berhasil",
+                        "Transmisi koreksi data telah sukses.",
+                    );
+                } else {
+                    showResult(false, "Update Gagal", result.msg);
+                }
+            } catch (err) {
+                showResult(false, "System Error", err.message);
+            } finally {
+                isUpdating = false;
+                showLoading(false);
+            }
+        }
+
+        function switchView(view) {
+            document
+                .getElementById("listView")
+                .classList.toggle("hidden", view !== "list");
+            document
+                .getElementById("formView")
+                .classList.toggle("hidden", view !== "form");
+        }
+
+        function showLoading(show) {
+            document
+                .getElementById("loadingOverlay")
+                .classList.toggle("hidden", !show);
+        }
+
+        function showResult(success, title, msg) {
+            document.getElementById("resultIcon").innerText = success
+                ? "✅"
+                : "⚠️";
+            document.getElementById("resultTitle").innerText = title;
+            document.getElementById("resultMessage").innerText = msg;
+            document.getElementById("resultOverlay").classList.remove("hidden");
+            document.getElementById("resultActionBtn").onclick = () => {
+                document
+                    .getElementById("resultOverlay")
+                    .classList.add("hidden");
+                if (success) tg?.close();
+            };
+        }
+
+        document.addEventListener("DOMContentLoaded", init);
+    </script>
+</Layout>

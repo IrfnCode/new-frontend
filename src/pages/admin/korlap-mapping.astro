@@ -1,0 +1,181 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { AdminController } from "../../lib/controllers/AdminController";
+
+const role = Astro.cookies.get("admin_role")?.value;
+if (role !== "ADMIN") return Astro.redirect("/admin");
+
+const groups = await AdminController.getGroups();
+const technicians = await AdminController.getTechnicians();
+
+// Filter only technicians that could be Korlap/HSA (though user mentioned any technician is fine)
+---
+
+<Layout title="Mapping Korlap & HSA - MORENA">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="korlap-mapping" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined text-[24px]">map_search</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-on-surface font-headline tracking-tight">Pengaturan Korlap & HSA</h2>
+                        <p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest leading-none mt-1">Personnel Area Management</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs font-bold text-on-surface-variant italic">Data Sync with Naker Database</span>
+                    <button id="syncData" class="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant">
+                        <span class="material-symbols-outlined text-[20px]">sync</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-8">
+                <div class="grid grid-cols-1 gap-6">
+                    {groups.map((group: any) => (
+                        <div class="bg-surface-container-low border border-border-color rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group p-6">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                <div class="space-y-1">
+                                    <h3 class="text-lg font-black text-primary font-headline tracking-tight uppercase">{group.service_area}</h3>
+                                    <div class="flex items-center gap-2">
+                                        <span class="px-2 py-0.5 rounded-lg bg-surface-container-high text-[10px] font-bold text-on-surface-variant border border-border-color">GROUP ID: {group.group_id}</span>
+                                        {group.is_active ? 
+                                            <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-green-500/10 text-green-500 text-[10px] font-bold uppercase border border-green-500/20">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                                Active
+                                            </span> : 
+                                            <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-error/10 text-error text-[10px] font-bold uppercase border border-error/20">Inactive</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 max-w-2xl">
+                                    <div class="space-y-2">
+                                        <label class="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">KORLAP SEKTOR</label>
+                                        <div class="relative">
+                                            <select 
+                                                class="w-full bg-surface-container border border-border-color rounded-xl p-3 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none pr-10"
+                                                onchange={`updateMapping(${group.id}, 'korlap_nik', this.value)`}
+                                            >
+                                                <option value="">-- Pilih Korlap --</option>
+                                                {technicians.map((t: any) => (
+                                                    <option value={t.nik} selected={t.nik === group.korlap_nik}>{t.nama} ({t.nik})</option>
+                                                ))}
+                                            </select>
+                                            <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <label class="block text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">HSA SEKTOR</label>
+                                        <div class="relative">
+                                            <select 
+                                                class="w-full bg-surface-container border border-border-color rounded-xl p-3 text-sm font-bold text-on-surface focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none pr-10"
+                                                onchange={`updateMapping(${group.id}, 'hsa_nik', this.value)`}
+                                            >
+                                                <option value="">-- Pilih HSA --</option>
+                                                {technicians.map((t: any) => (
+                                                    <option value={t.nik} selected={t.nik === group.hsa_nik}>{t.nama} ({t.nik})</option>
+                                                ))}
+                                            </select>
+                                            <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant">expand_more</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center justify-center p-2">
+                                    <div id={`status-${group.id}`} class="hidden opacity-0 transition-opacity duration-300">
+                                        <span class="material-symbols-outlined text-green-500 text-[24px]">check_circle</span>
+                                    </div>
+                                    <div id={`loading-${group.id}`} class="hidden">
+                                        <span class="material-symbols-outlined animate-spin text-primary text-[24px]">sync</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline>
+        window.updateMapping = async (id, field, value) => {
+            const loading = document.getElementById(`loading-${id}`);
+            const status = document.getElementById(`status-${id}`);
+            
+            // Show loading
+            loading.classList.remove('hidden');
+            status.classList.add('hidden');
+            status.style.opacity = '0';
+
+            try {
+                // We need to fetch current group data first to not overwrite other fields
+                // Or better, let the backend handle partial update or just send the id and the specific field
+                // For now, let's assume we have a flexible manage-groups action 'edit'
+                
+                // Note: manage-groups expects formData or specific structure. 
+                // Let's create a simpler formData
+                const formData = new FormData();
+                formData.append('action', 'edit');
+                formData.append('id', id);
+                
+                // Get other current values from DOM or just send the mapping
+                // For simplicity, we'll need to fetch the existing data or have it in the DOM
+                // But wait, manage-groups currently requires many fields. Let's make it smarter or use a dedicated endpoint.
+                
+                // Since this is a new feature, I'll create a dedicated endpoint src/pages/api/manage-korlap.ts
+                const response = await fetch('/api/manage-korlap', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, [field]: value })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    loading.classList.add('hidden');
+                    status.classList.remove('hidden');
+                    setTimeout(() => { status.style.opacity = '1'; }, 10);
+                    setTimeout(() => { status.style.opacity = '0'; }, 2000);
+                } else {
+                    alert('Gagal menyimpan: ' + (result.msg || 'Terjadi kesalahan'));
+                    loading.classList.add('hidden');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Gagal menghubungi server');
+                loading.classList.add('hidden');
+            }
+        };
+
+        document.getElementById('syncData')?.addEventListener('click', () => {
+            window.location.reload();
+        });
+    </script>
+</Layout>
+
+<style is:global>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=JetBrains+Mono:wght@100..800&display=swap');
+
+    :root {
+        --primary: #0040A1;
+        --on-primary: #FFFFFF;
+        --surface: #F8FAFC;
+        --on-surface: #0F172A;
+        --on-surface-variant: #64748B;
+        --border-color: #E2E8F0;
+        --surface-container-low: #FFFFFF;
+        --surface-container: #F1F5F9;
+        --surface-container-high: #E2E8F0;
+        --error: #EF4444;
+    }
+
+    .font-headline { font-family: 'Outfit', sans-serif; }
+    .font-body { font-family: 'Outfit', sans-serif; }
+    .font-mono { font-family: 'JetBrains+Mono', monospace; }
+</style>

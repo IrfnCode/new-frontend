@@ -1,0 +1,156 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { InseraModel } from "../../lib/models/InseraModel";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+// Fetch tickets with reminders
+let reminderTickets = [];
+let dbError = null;
+
+try {
+    reminderTickets = await InseraModel.getTicketsWithReminders();
+    reminderTickets = (reminderTickets || []).map((wo: any) => {
+        const item = { ...wo };
+        ['id', 'order_id', 'orderId'].forEach(key => {
+            if (typeof item[key] === 'bigint') item[key] = item[key].toString();
+        });
+        return item;
+    });
+} catch (err) {
+    dbError = err.message;
+    console.error("SSR Error:", err.message);
+}
+---
+
+<Layout title="MORENA Admin - Reminder Tiket">
+    <meta name="current-user" content={username} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="reminders" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-4">
+                    <span class="material-symbols-outlined text-primary text-2xl">notifications_active</span>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-primary font-headline tracking-tight">Reminder Tiket</h2>
+                        <p class="text-xs text-on-surface-variant">Tiket dengan catatan revisi/peringatan untuk teknisi</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button onclick="window.toggleTheme()" class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant">
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                    <a href="/admin/insera-tickets" class="flex items-center gap-2 px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface rounded-xl transition-colors text-sm font-bold">
+                        <span class="material-symbols-outlined text-[20px]">arrow_back</span>
+                        <span>Kembali ke Data Tiket</span>
+                    </a>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-6">
+                <!-- Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="flex flex-col gap-1 rounded-2xl bg-error/5 border border-error/20 p-6">
+                        <p class="text-error text-[10px] font-bold uppercase tracking-widest">Total Reminder</p>
+                        <p class="text-error text-3xl font-black font-headline">{reminderTickets.length}</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-amber-500/5 border border-amber-500/20 p-6">
+                        <p class="text-amber-500 text-[10px] font-bold uppercase tracking-widest">Perlu Revisi Close</p>
+                        <p class="text-amber-500 text-3xl font-black font-headline">
+                            {reminderTickets.filter((t: any) => (t.notes_hd || t.notesHd || '').toLowerCase().includes('close')).length}
+                        </p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-primary/5 border border-primary/20 p-6">
+                        <p class="text-primary text-[10px] font-bold uppercase tracking-widest">Perlu Perbaikan</p>
+                        <p class="text-primary text-3xl font-black font-headline">
+                            {reminderTickets.filter((t: any) => (t.notes_hd || t.notesHd || '').toLowerCase().includes('perbaikan')).length}
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Reminder Table -->
+                <div class="rounded-xl border border-border-color bg-surface-container-lowest overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-surface-container-low text-xs uppercase font-extrabold text-on-surface">
+                                <tr>
+                                    <th class="px-4 py-3">NO INC</th>
+                                    <th class="px-4 py-3">Summary</th>
+                                    <th class="px-4 py-3 min-w-[250px]">Catatan Reminder</th>
+                                    <th class="px-4 py-3">Assigned To</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-border-color">
+                                {reminderTickets.length === 0 ? (
+                                    <tr>
+                                        <td colspan="6" class="px-6 py-12 text-center text-on-surface-variant">
+                                            <div class="flex flex-col items-center gap-3">
+                                                <span class="material-symbols-outlined text-4xl opacity-30">notifications_off</span>
+                                                <p class="text-sm font-bold">Tidak ada tiket dengan reminder</p>
+                                                <p class="text-xs opacity-60">Semua tiket sudah ditangani dengan baik</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    reminderTickets.map((wo: any) => {
+                                        const assignedTo = wo.assigned_to || wo.assignedTo;
+                                        let assignedNames = [];
+                                        if (assignedTo && assignedTo !== '[]') {
+                                            try {
+                                                const parsed = typeof assignedTo === 'string' ? JSON.parse(assignedTo) : assignedTo;
+                                                assignedNames = Array.isArray(parsed) ? parsed.map((t: any) => typeof t === 'object' ? (t.nama || t.name) : t) : [parsed];
+                                            } catch (e) {}
+                                        }
+
+                                        return (
+                                            <tr class="hover:bg-surface-container-low/50 transition-colors">
+                                                <td class="px-4 py-3 font-mono text-xs text-primary font-black">{wo.order_id || wo.orderId || '-'}</td>
+                                                <td class="px-4 py-3">
+                                                    <p class="text-on-surface font-semibold text-sm">{wo.summary || '-'}</p>
+                                                    <p class="text-[10px] text-on-surface-variant">{wo.workzone || '-'}</p>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <div class="flex items-start gap-2 bg-error/5 border border-error/10 rounded-lg p-3">
+                                                        <span class="material-symbols-outlined text-error text-[18px]">warning</span>
+                                                        <p class="text-xs text-error font-bold leading-relaxed">{wo.notes_hd || wo.notesHd || '-'}</p>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    {assignedNames.length > 0 ? (
+                                                        <div class="flex flex-wrap gap-1">
+                                                            {assignedNames.map((name: string) => (
+                                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary">{name}</span>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <span class="text-[10px] italic text-on-surface-variant/50">Belum di-assign</span>
+                                                    )}
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-surface-container-highest text-on-surface border">
+                                                        {wo.status || 'OPEN'}
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3 text-right">
+                                                    <a href={`/admin/insera-tickets?edit=${wo.id}`} class="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-bold hover:bg-primary/20 transition-colors">
+                                                        <span class="material-symbols-outlined text-[16px]">edit</span>
+                                                        Edit
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</Layout>

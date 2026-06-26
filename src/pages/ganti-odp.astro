@@ -1,0 +1,500 @@
+---
+---
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>Input Ganti ODP</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style is:global>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#eef2ff;color:#1a1a1a;min-height:100dvh;overflow-x:hidden}
+.hdr{background:linear-gradient(135deg,#0040a1,#1a6fd4);color:#fff;padding:16px 20px;position:sticky;top:0;z-index:20;box-shadow:0 2px 12px rgba(0,64,161,.3)}
+.hdr h1{font-size:17px;font-weight:800;display:flex;align-items:center;gap:8px}
+.hdr p{font-size:11px;opacity:.75;margin-top:3px}
+.body{padding:14px;max-width:480px;margin:0 auto;padding-bottom:90px}
+.card{background:#fff;border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.card-title{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.12em;color:#0040a1;margin-bottom:14px;display:flex;align-items:center;gap:6px;padding-bottom:10px;border-bottom:1.5px solid #eef2ff}
+.f{margin-bottom:14px}
+.f:last-child{margin-bottom:0}
+.f label{display:block;font-size:11px;font-weight:800;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.req{color:#e53935}
+.f input[type=text],.f input[type=date],.f input[type=datetime-local],.f textarea{width:100%;padding:12px 14px;border:1.5px solid #e8ecf8;border-radius:12px;font-size:14px;font-weight:600;background:#f8faff;outline:none;transition:border-color .2s,background .2s;color:#1a1a1a}
+.f input:focus,.f textarea:focus{border-color:#0040a1;background:#fff}
+.f textarea{resize:vertical;min-height:72px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.note{font-size:10px;color:#888;margin-top:3px;line-height:1.4}
+/* Photo grid */
+.pgrid{display:grid;gap:8px;margin-top:8px}
+.pgrid.c1{grid-template-columns:1fr}
+.pgrid.c2{grid-template-columns:1fr 1fr}
+.pgrid.c3{grid-template-columns:1fr 1fr 1fr}
+.pslot{height:110px;border-radius:18px;border:2px dashed #b8c7eb;background:linear-gradient(135deg,#f8faff,#eef2ff);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;transition:all .3s cubic-bezier(0.4, 0, 0.2, 1);user-select:none}
+.pslot:hover{transform:translateY(-2px);border-color:#0040a1;background:#fff;box-shadow:0 8px 20px rgba(0,64,161,0.08)}
+.pslot:active{transform:translateY(0) scale(.97)}
+.pslot.has-img{border:2px solid #0040a1;border-style:solid;box-shadow:0 6px 16px rgba(0,64,161,0.15);background:#fff}
+.pslot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;transition:transform .3s}
+.pslot.has-img:hover img{transform:scale(1.05)}
+.pslot .ico{width:32px;height:32px;margin-bottom:6px;color:#0040a1;opacity:0.8;transition:all .3s}
+.pslot:hover .ico{opacity:1;transform:scale(1.1)}
+.pslot .lbl{font-size:11px;font-weight:800;color:#0040a1;text-align:center;padding:0 8px;pointer-events:none;line-height:1.2;text-transform:uppercase;letter-spacing:0.04em}
+.pslot .del{position:absolute;top:6px;right:6px;background:#e53935;color:#fff;border:none;border-radius:50%;width:24px;height:24px;font-size:14px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;box-shadow:0 2px 6px rgba(229,57,53,.4);transition:transform .2s}
+.pslot .del:active{transform:scale(.8)}
+/* PS counter */
+.ctr{display:flex;align-items:center;gap:12px;margin-top:6px}
+.ctr-btn{width:38px;height:38px;border-radius:10px;border:1.5px solid #d0d8f0;background:#f4f7ff;font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#0040a1;flex-shrink:0;transition:background .15s}
+.ctr-btn:active{background:#dde6ff}
+.ctr-val{font-size:24px;font-weight:900;color:#0040a1;min-width:36px;text-align:center}
+.ctr-lbl{font-size:12px;color:#666;font-weight:600}
+/* Barcode list */
+.ps18-card{background:#fafbff;border:1.5px solid #e8ecf8;border-radius:16px;padding:16px 14px 14px;margin-bottom:14px;position:relative;box-shadow:0 2px 8px rgba(0,0,0,.02)}
+.ps18-card-num{position:absolute;top:-9px;left:14px;background:#0040a1;color:#fff;font-size:10px;font-weight:900;padding:2px 8px;border-radius:8px;letter-spacing:0.05em;box-shadow:0 2px 6px rgba(0,64,161,.2)}
+.ps18-card input{width:100%;padding:10px 12px;border:1.5px solid #dce4f7;border-radius:10px;font-size:13px;font-weight:600;background:#fff;outline:none;transition:border-color .2s;margin-bottom:6px;color:#1a1a1a}
+.ps18-card input:focus{border-color:#0040a1}
+/* Submit */
+.sbar{position:fixed;bottom:0;left:0;right:0;padding:14px 16px;background:#fff;border-top:1px solid #e8ecf8;z-index:20;max-width:480px;margin:0 auto}
+.sbtn{width:100%;padding:15px;background:linear-gradient(135deg,#0040a1,#1a6fd4);color:#fff;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 16px rgba(0,64,161,.3);transition:opacity .2s}
+.sbtn:disabled{opacity:.5}
+/* Overlay */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:100;backdrop-filter:blur(2px)}
+.ov-card{background:#fff;border-radius:22px;padding:32px 24px;text-align:center;min-width:240px;max-width:300px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.spin{width:40px;height:40px;border:4px solid #e8ecf8;border-top-color:#0040a1;border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 14px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.ov-icon{font-size:52px;margin-bottom:12px}
+.ov-title{font-size:18px;font-weight:900;margin-bottom:8px}
+.ov-msg{font-size:13px;color:#666;margin-bottom:20px;line-height:1.5}
+.ov-btn{padding:12px 28px;background:#0040a1;color:#fff;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>📦 Input Ganti ODP</h1>
+  <p>Isi semua data dengan lengkap dan benar</p>
+</div>
+
+<div class="body">
+
+  <div class="card">
+    <div class="card-title">📋 Data Utama</div>
+    <div class="f"><label>Tanggal <span class="req">*</span></label><input type="datetime-local" id="tanggal"/></div>
+    <div class="f"><label>Nomor Tiket <span class="req">*</span></label><input type="text" id="no_tiket" placeholder="INC48xxxxxx"/></div>
+    <div class="row2">
+      <div class="f"><label>Datek ODP <span class="req">*</span></label><input type="text" id="datek_odp" placeholder="ODP-XXX-XX/00"/></div>
+      <div class="f"><label>Datek ODC <span class="req">*</span></label><input type="text" id="datek_odc" placeholder="ODC-XXX-XX"/></div>
+    </div>
+    <div class="f"><label>Lokasi <span class="req">*</span></label><input type="text" id="lokasi" placeholder="Alamat / koordinat"/></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔍 Barcode ODP</div>
+    <div class="f"><label>Barcode ODP <span class="req">*</span></label><input type="text" id="barcode_odp" placeholder="Scan / ketik barcode ODP"/></div>
+    <div class="f">
+      <label>Evident Barcode ODP <span class="req">*</span></label>
+      <p class="note">1 foto</p>
+      <div class="pgrid c1" id="g_barcode_odp"></div>
+    </div>
+    <div class="f">
+      <label>Evident Label ODP <span class="req">*</span></label>
+      <p class="note">1 foto — pastikan sesuai label IODN</p>
+      <div class="pgrid c1" id="g_label_odp"></div>
+    </div>
+    <div class="f">
+      <label>Evident Setelah Perbaikan <span class="req">*</span></label>
+      <p class="note">2 foto: dari dekat dan dari jauh (tampak rise pipe)</p>
+      <div class="pgrid c2" id="g_setelah"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📦 PS 1:8</div>
+    <div class="f">
+      <label>Jumlah PS 1:8 <span class="req">*</span></label>
+      <div class="ctr">
+        <button type="button" class="ctr-btn" onclick="chgPs(-1)">−</button>
+        <span class="ctr-val" id="ps_val">1</span>
+        <button type="button" class="ctr-btn" onclick="chgPs(1)">+</button>
+        <span class="ctr-lbl">PS 1:8</span>
+      </div>
+      <input type="hidden" id="ps18_count" value="1"/>
+    </div>
+    <div class="f">
+      <label>Barcode PS 1:8 <span class="req">*</span></label>
+      <p class="note">Isi sesuai jumlah PS 1:8</p>
+      <div id="bc_list" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🧰 Material</div>
+    <p class="note" style="margin-bottom:12px">Foto wajib jika jumlah &gt; 0</p>
+    <div class="row2">
+      <div class="f">
+        <label>ODP-SOLID-PB-8</label>
+        <div class="ctr" style="margin-top:6px">
+          <button type="button" class="ctr-btn" onclick="chgMat('odp_solid',-1)">−</button>
+          <span class="ctr-val" id="v_odp_solid">0</span>
+          <button type="button" class="ctr-btn" onclick="chgMat('odp_solid',1)">+</button>
+        </div>
+        <input type="hidden" id="material_odp_solid" value="0"/>
+      </div>
+      <div class="f">
+        <label>CLAM-COOKER</label>
+        <div class="ctr" style="margin-top:6px">
+          <button type="button" class="ctr-btn" onclick="chgMat('clam',-1)">−</button>
+          <span class="ctr-val" id="v_clam">0</span>
+          <button type="button" class="ctr-btn" onclick="chgMat('clam',1)">+</button>
+        </div>
+        <input type="hidden" id="material_clam_cooker" value="0"/>
+      </div>
+    </div>
+    <div class="f hidden" id="f_clam">
+      <label>Foto Clam Cooker <span class="req">*</span></label>
+      <p class="note">2 foto</p>
+      <div class="pgrid c2" id="g_clam"></div>
+    </div>
+    <div class="row2" style="margin-top:8px">
+      <div class="f">
+        <label>Material UC</label>
+        <div class="ctr" style="margin-top:6px">
+          <button type="button" class="ctr-btn" onclick="chgMat('uc',-1)">−</button>
+          <span class="ctr-val" id="v_uc">0</span>
+          <button type="button" class="ctr-btn" onclick="chgMat('uc',1)">+</button>
+        </div>
+        <input type="hidden" id="material_uc" value="0"/>
+      </div>
+      <div class="f">
+        <label>Kabel ADSS 5M</label>
+        <div class="ctr" style="margin-top:6px">
+          <button type="button" class="ctr-btn" onclick="chgMat('adss',-1)">−</button>
+          <span class="ctr-val" id="v_adss">0</span>
+          <button type="button" class="ctr-btn" onclick="chgMat('adss',1)">+</button>
+        </div>
+        <input type="hidden" id="material_kabel_adss_5m" value="0"/>
+      </div>
+    </div>
+    <div class="f hidden" id="f_uc">
+      <label>Foto Material UC <span class="req">*</span></label>
+      <div class="pgrid c1" id="g_uc"></div>
+    </div>
+    <div class="f hidden" id="f_adss">
+      <label>Foto Kabel ADSS 5M <span class="req">*</span></label>
+      <div class="pgrid c1" id="g_adss"></div>
+    </div>
+    <div class="f" style="margin-top:8px">
+      <label>ODP-RISE</label>
+      <div class="ctr" style="margin-top:6px">
+        <button type="button" class="ctr-btn" onclick="chgMat('rise',-1)">−</button>
+        <span class="ctr-val" id="v_rise">0</span>
+        <button type="button" class="ctr-btn" onclick="chgMat('rise',1)">+</button>
+      </div>
+      <input type="hidden" id="odp_rise_count" value="0"/>
+    </div>
+    <div class="f hidden" id="f_rise">
+      <label>Foto ODP-Rise <span class="req">*</span></label>
+      <div class="pgrid c1" id="g_rise"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📸 Evidence</div>
+    <div class="f">
+      <label>Sebelum <span class="req">*</span></label>
+      <p class="note">2 foto: ODP sebelum + redaman sebelum pergantian</p>
+      <div class="pgrid c2" id="g_sebelum"></div>
+    </div>
+    <div class="f">
+      <label>Sesudah <span class="req">*</span></label>
+      <p class="note" id="note_sesudah">PS 1:8 = 1 → 9 foto</p>
+      <div class="pgrid" id="g_sesudah"></div>
+    </div>
+    <div class="f" style="margin-top:12px">
+      <label>Catatan (opsional)</label>
+      <textarea id="catatan" placeholder="Catatan tambahan..."></textarea>
+    </div>
+  </div>
+
+</div>
+
+<div class="sbar">
+  <button class="sbtn" id="sbtn" onclick="doSubmit()">➤ Kirim Data Ganti ODP</button>
+</div>
+
+<div class="ov hidden" id="ov_load">
+  <div class="ov-card"><div class="spin"></div><p style="font-weight:700;font-size:14px">Mengirim data...</p></div>
+</div>
+<div class="ov hidden" id="ov_result">
+  <div class="ov-card">
+    <div class="ov-icon" id="r_icon">✅</div>
+    <div class="ov-title" id="r_title">Berhasil!</div>
+    <div class="ov-msg" id="r_msg"></div>
+    <button class="ov-btn" onclick="closeResult()">Tutup</button>
+  </div>
+</div>
+
+<script is:inline>
+const tg = window.Telegram?.WebApp;
+let uid = '';
+let submitting = false;
+let psCount = 1;
+
+// Get user ID
+if (tg) {
+  tg.ready(); tg.expand();
+  // .id bisa berupa number atau string
+  const user = tg.initDataUnsafe?.user;
+  if (user?.id) uid = String(user.id);
+  if (!uid && tg.initData) {
+    try {
+      const p = new URLSearchParams(tg.initData);
+      const u = p.get('user');
+      if (u) uid = String(JSON.parse(decodeURIComponent(u))?.id || '');
+    } catch(_) {}
+  }
+}
+if (!uid) uid = new URLSearchParams(location.search).get('uid') || '';
+
+// Photo storage: key -> { index: File }
+const photos = {};
+
+function mkGrid(containerId, key, count, labels) {
+  const c = document.getElementById(containerId);
+  if (!c) return;
+  // grid cols
+  c.className = 'pgrid ' + (count===1?'c1':count===2?'c2':count<=4?'c2':'c3');
+  c.innerHTML = '';
+  if (!photos[key]) photos[key] = {};
+  for (let i = 0; i < count; i++) {
+    const lbl = labels?.[i] || ('Foto '+(i+1));
+    const slot = document.createElement('div');
+    slot.className = 'pslot' + (photos[key][i] ? ' has-img' : '');
+    slot.onclick = () => pickPhoto(key, i, containerId, count, labels);
+
+    if (photos[key][i]) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(photos[key][i]);
+      slot.appendChild(img);
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '×';
+      del.onclick = (e) => { e.stopPropagation(); delete photos[key][i]; mkGrid(containerId, key, count, labels); };
+      slot.appendChild(del);
+    } else {
+      slot.innerHTML = '<svg class="ico" style="width:32px;height:32px;margin-bottom:6px;color:#0040a1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg><span class="lbl">'+lbl+'</span>';
+    }
+    c.appendChild(slot);
+  }
+}
+
+function pickPhoto(key, idx, cid, count, labels) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.style.display = 'none';
+  inp.onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!photos[key]) photos[key] = {};
+    photos[key][idx] = f;
+    mkGrid(cid, key, count, labels);
+    document.body.removeChild(inp);
+  };
+  document.body.appendChild(inp);
+  inp.click();
+}
+
+function chgPs(d) {
+  psCount = Math.max(1, Math.min(8, psCount + d));
+  document.getElementById('ps_val').textContent = psCount;
+  document.getElementById('ps18_count').value = psCount;
+  renderBcList();
+  renderSesudah();
+}
+
+function renderBcList() {
+  const c = document.getElementById('bc_list');
+  c.innerHTML = '';
+  for (let i = 0; i < psCount; i++) {
+    const card = document.createElement('div');
+    card.className = 'ps18-card';
+    card.innerHTML = `
+      <div class="ps18-card-num">PS 1:8 #${i+1}</div>
+      <input type="text" id="bc_ps_${i}" placeholder="Input Serial Number..." />
+      <div class="pgrid c1" id="g_ps18_${i}"></div>
+    `;
+    c.appendChild(card);
+    mkGrid('g_ps18_'+i, 'foto_ps18_'+(i+1), 1, ['Foto Barcode']);
+  }
+}
+
+function renderSesudah() {
+  const n = psCount * 9;
+  document.getElementById('note_sesudah').textContent = 'PS 1:8 = '+psCount+' → '+n+' foto';
+  const labels = Array.from({length:n},(_,i)=>'Sesudah '+(i+1));
+  mkGrid('g_sesudah','sesudah',n,labels);
+}
+
+function chgMat(key, d) {
+  const ids = {odp_solid:'material_odp_solid', clam:'material_clam_cooker', rise:'odp_rise_count', uc:'material_uc', adss:'material_kabel_adss_5m'};
+  const vids = {odp_solid:'v_odp_solid', clam:'v_clam', rise:'v_rise', uc:'v_uc', adss:'v_adss'};
+  const cur = parseInt(document.getElementById(ids[key]).value)||0;
+  const nv = Math.max(0, cur+d);
+  document.getElementById(ids[key]).value = nv;
+  document.getElementById(vids[key]).textContent = nv;
+  if (key==='clam') {
+    document.getElementById('f_clam').classList.toggle('hidden', nv===0);
+    if (nv>0) mkGrid('g_clam','foto_clam',2,['Clam 1','Clam 2']);
+  }
+  if (key==='uc') {
+    document.getElementById('f_uc').classList.toggle('hidden', nv===0);
+    if (nv>0) mkGrid('g_uc','foto_uc',1,['Foto UC']);
+  }
+  if (key==='adss') {
+    document.getElementById('f_adss').classList.toggle('hidden', nv===0);
+    if (nv>0) mkGrid('g_adss','foto_kabel_adss_5m',1,['Foto ADSS 5M']);
+  }
+  if (key==='rise') {
+    document.getElementById('f_rise').classList.toggle('hidden', nv===0);
+    if (nv>0) mkGrid('g_rise','foto_odp_rise',1,['ODP Rise']);
+  }
+}
+
+async function doSubmit() {
+  if (submitting) return;
+
+  // Ambil user ID fresh saat submit (sama seperti input.astro)
+  let submitUid = uid;
+  if (!submitUid && window.Telegram?.WebApp?.initDataUnsafe?.user) {
+    submitUid = String(window.Telegram.WebApp.initDataUnsafe.user.id || '');
+  }
+  // Last resort: coba ambil dari tg object langsung
+  if (!submitUid) {
+    try { submitUid = String(window.Telegram?.WebApp?.initDataUnsafe?.user?.id || ''); } catch(_) {}
+  }
+  if (!submitUid) return alert('Gagal mendapatkan ID pengguna. Tutup dan buka ulang dari bot.');
+
+  // Validasi teks
+  const req = [['tanggal','Tanggal'],['no_tiket','Nomor Tiket'],['datek_odp','Datek ODP'],
+               ['datek_odc','Datek ODC'],['lokasi','Lokasi'],['barcode_odp','Barcode ODP']];
+  for (const [id,lbl] of req) {
+    if (!document.getElementById(id)?.value?.trim()) {
+      document.getElementById(id)?.focus();
+      return alert('Harap isi: '+lbl);
+    }
+  }
+  for (let i=0;i<psCount;i++) {
+    if (!document.getElementById('bc_ps_'+i)?.value?.trim()) {
+      return alert('Harap isi Serial Number PS 1:8 #'+(i+1));
+    }
+  }
+
+  // Validasi foto wajib
+  const chk = (key,n,lbl) => {
+    const cnt = Object.keys(photos[key]||{}).length;
+    if (cnt<n) { alert('Harap upload '+lbl+' ('+n+' foto, baru '+cnt+')'); return false; }
+    return true;
+  };
+  if (!chk('evident_barcode_odp',1,'Evident Barcode ODP')) return;
+  if (!chk('evident_label_odp',1,'Evident Label ODP')) return;
+  if (!chk('evident_setelah',2,'Evident Setelah')) return;
+  if (!chk('evident_sebelum',2,'Evident Sebelum')) return;
+  for (let i=0; i<psCount; i++) {
+    if (!chk('foto_ps18_'+(i+1), 1, 'Foto Barcode PS 1:8 #'+(i+1))) return;
+  }
+  if (!chk('sesudah',psCount*9,'Foto Sesudah')) return;
+  const clamN = parseInt(document.getElementById('material_clam_cooker').value)||0;
+  if (clamN>0 && !chk('foto_clam',2,'Foto Clam Cooker')) return;
+  const ucN = parseInt(document.getElementById('material_uc').value)||0;
+  if (ucN>0 && !chk('foto_uc',1,'Foto UC')) return;
+  const adssN = parseInt(document.getElementById('material_kabel_adss_5m').value)||0;
+  if (adssN>0 && !chk('foto_kabel_adss_5m',1,'Foto Kabel ADSS 5M')) return;
+  const riseN = parseInt(document.getElementById('odp_rise_count').value)||0;
+  if (riseN>0 && !chk('foto_odp_rise',1,'Foto ODP Rise')) return;
+
+  submitting = true;
+  document.getElementById('sbtn').disabled = true;
+  document.getElementById('ov_load').classList.remove('hidden');
+
+  try {
+    const fd = new FormData();
+    fd.append('user_id', submitUid);
+    fd.append('tanggal', document.getElementById('tanggal').value);
+    fd.append('no_tiket', document.getElementById('no_tiket').value);
+    fd.append('datek_odp', document.getElementById('datek_odp').value);
+    fd.append('datek_odc', document.getElementById('datek_odc').value);
+    fd.append('lokasi', document.getElementById('lokasi').value);
+    fd.append('barcode_odp', document.getElementById('barcode_odp').value);
+    fd.append('ps18_count', String(psCount));
+    const bcs = [];
+    for (let i=0;i<psCount;i++) {
+      bcs.push(document.getElementById('bc_ps_'+i)?.value||'');
+      const k = 'foto_ps18_'+(i+1);
+      if (photos[k] && photos[k][0]) fd.append(k, photos[k][0]);
+    }
+    fd.append('barcode_ps18_1', bcs[0]||'');
+    if (psCount>1) fd.append('barcode_ps18_2', bcs[1]||'');
+    fd.append('barcode_ps_list', JSON.stringify(bcs));
+    fd.append('material_odp_solid', document.getElementById('material_odp_solid').value);
+    fd.append('material_clam_cooker', document.getElementById('material_clam_cooker').value);
+    fd.append('material_uc', document.getElementById('material_uc').value);
+    fd.append('material_kabel_adss_5m', document.getElementById('material_kabel_adss_5m').value);
+    fd.append('odp_rise_count', document.getElementById('odp_rise_count').value);
+    fd.append('catatan', document.getElementById('catatan').value);
+
+    const ap = (key, prefix, single=false) => {
+      Object.entries(photos[key]||{}).forEach(([i,f]) => {
+          if (single) fd.append(prefix, f);
+          else fd.append(prefix+'_'+(parseInt(i)+1), f);
+      });
+    };
+    ap('evident_barcode_odp','evident_barcode_odp', true);
+    ap('evident_label_odp','evident_label_odp', true);
+    ap('evident_setelah','evident_setelah');
+    ap('evident_sebelum','evident_sebelum');
+    ap('sesudah','sesudah');
+    ap('foto_clam','foto_clam');
+    ap('foto_uc','foto_uc', true);
+    ap('foto_kabel_adss_5m','foto_kabel_adss_5m', true);
+    ap('foto_odp_rise','foto_odp_rise', true);
+
+    const res = await fetch('/api/ganti-odp',{method:'POST',body:fd});
+    const r = await res.json();
+    document.getElementById('ov_load').classList.add('hidden');
+    if (r.status==='success') {
+      document.getElementById('r_icon').textContent='✅';
+      document.getElementById('r_title').textContent='Data Terkirim!';
+      document.getElementById('r_msg').textContent='Ganti ODP #'+r.id+' berhasil disimpan.';
+      document.getElementById('ov_result').classList.remove('hidden');
+    } else {
+      alert('Gagal: '+(r.message||'Error'));
+      document.getElementById('sbtn').disabled=false;
+    }
+  } catch(e) {
+    document.getElementById('ov_load').classList.add('hidden');
+    alert('Error: '+e.message);
+    document.getElementById('sbtn').disabled=false;
+  } finally { submitting=false; }
+}
+
+function closeResult() {
+  document.getElementById('ov_result').classList.add('hidden');
+  if (tg) tg.close();
+}
+
+// Init
+const now = new Date();
+const wibMs = now.getTime() + (now.getTimezoneOffset() * 60000) + (7 * 3600000);
+const wib = new Date(wibMs);
+const pad = (n) => String(n).padStart(2, '0');
+const wibStr = `${wib.getFullYear()}-${pad(wib.getMonth()+1)}-${pad(wib.getDate())}T${pad(wib.getHours())}:${pad(wib.getMinutes())}`;
+document.getElementById('tanggal').value = wibStr;
+mkGrid('g_barcode_odp','evident_barcode_odp',1,['Barcode ODP']);
+mkGrid('g_label_odp','evident_label_odp',1,['Label ODP']);
+mkGrid('g_setelah','evident_setelah',2,['Dekat','Jauh (rise pipe)']);
+mkGrid('g_sebelum','evident_sebelum',2,['ODP Sebelum','Redaman Sebelum']);
+renderBcList();
+renderSesudah();
+</script>
+</body>
+</html>

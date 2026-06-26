@@ -1,0 +1,226 @@
+---
+import Layout from "../../layouts/Layout.astro";
+
+import { AdminModel } from "../../lib/models/AdminModel";
+const logoSrc = "/logo-morena.png?v3";
+
+let error = "";
+if (Astro.request.method === "POST") {
+    try {
+        const data = await Astro.request.formData();
+        const username = data.get("username")?.toString().trim();
+        const password = data.get("password")?.toString().trim();
+
+        if (!username || !password) throw new Error("Credentials required.");
+
+        // Initialize DB if not exists (auto-migration)
+        await AdminModel.init();
+
+        const user = await AdminModel.findByUsername(username);
+        const hashedInput = AdminModel.hashPassword(password);
+
+        // Fallback for first-time migration if table was empty
+        const allUsers = await AdminModel.getAll();
+        if (allUsers.length === 0) {
+            const defaultUser = import.meta.env.ADMIN_USER || "admin";
+            const defaultPass = import.meta.env.ADMIN_PASS || "admin123";
+
+            if (username === defaultUser && password === defaultPass) {
+                const newId = await AdminModel.create({
+                    username,
+                    password,
+                    role: "ADMIN",
+                });
+                console.log(`[AUTH] Seeded initial admin account ID: ${newId}`);
+
+                Astro.cookies.set("admin_session", "active", {
+                    path: "/",
+                    httpOnly: true,
+                    sameSite: "strict",
+                });
+                Astro.cookies.set("admin_role", "ADMIN", {
+                    path: "/",
+                    httpOnly: true,
+                    sameSite: "strict",
+                });
+                return Astro.redirect("/admin");
+            }
+        }
+
+        if (user && user.password === hashedInput) {
+            Astro.cookies.set("admin_session", "active", {
+                path: "/",
+                httpOnly: true,
+                sameSite: "strict",
+            });
+            Astro.cookies.set("admin_role", user.role, {
+                path: "/",
+                httpOnly: true,
+                sameSite: "strict",
+            });
+            Astro.cookies.set("admin_user", user.username, {
+                path: "/",
+                httpOnly: true,
+                sameSite: "strict",
+            });
+
+            console.log(`[AUTH] Successful login: ${username} (${user.role})`);
+            return Astro.redirect("/admin");
+        } else {
+            console.warn(`[AUTH] Failed login attempt for user: ${username}`);
+            error = "Invalid username or password credentials.";
+        }
+    } catch (e: any) {
+        console.error("[AUTH] Error:", e);
+        error = e.message || "An error occurred during authentication.";
+    }
+}
+---
+
+<Layout title="MORENA Admin - Secure Login">
+    <div
+        class="min-h-screen flex items-center justify-center p-6 bg-surface relative overflow-hidden"
+    >
+        <!-- Abstract Background Blobs -->
+        <div
+            class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px] animate-pulse"
+        >
+        </div>
+        <div
+            class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/10 rounded-full blur-[120px] animate-pulse"
+            style="animation-delay: 2s;"
+        >
+        </div>
+
+        <div
+            class="w-full max-w-md relative z-10 glass-container p-10 rounded-[32px] border border-white/20 shadow-2xl backdrop-blur-3xl"
+        >
+            <div class="text-center mb-8 flex flex-col items-center">
+                <img
+                    src={logoSrc}
+                    alt="MORENA"
+                    class="h-20 w-auto max-w-[320px] object-contain mb-4"
+                />
+                <p
+                    class="text-xs font-bold text-on-surface-variant/70 mt-1 uppercase tracking-widest leading-relaxed max-w-[200px]"
+                >
+                    Monitoring Order Real-time<br />
+                    & Electronic Notice Assurance
+                </p>
+            </div>
+
+            {
+                error && (
+                    <div class="mb-6 p-4 rounded-2xl bg-error/10 border border-error/20 flex items-center gap-3 animate-shake">
+                        <span class="material-symbols-outlined text-error text-xl">
+                            error
+                        </span>
+                        <p class="text-xs font-bold text-error leading-tight">
+                            {error}
+                        </p>
+                    </div>
+                )
+            }
+
+            <form method="POST" class="space-y-6">
+                <div class="space-y-2">
+                    <label
+                        class="text-xs font-bold text-on-surface-variant uppercase tracking-widest ml-1"
+                        >Username</label
+                    >
+                    <div class="relative group">
+                        <span
+                            class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors"
+                            >person</span
+                        >
+                        <input
+                            type="text"
+                            name="username"
+                            placeholder="Username"
+                            required
+                            autofocus
+                            class="w-full pl-12 pr-4 py-4 bg-surface-container-high/50 rounded-2xl border border-transparent focus:border-primary/30 focus:bg-surface-container-high focus:ring-4 focus:ring-primary/10 text-sm transition-all outline-none"
+                        />
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label
+                        class="text-xs font-bold text-on-surface-variant uppercase tracking-widest ml-1"
+                        >Password</label
+                    >
+                    <div class="relative group">
+                        <span
+                            class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors"
+                            >lock</span
+                        >
+                        <input
+                            type="password"
+                            name="password"
+                            placeholder="••••••••"
+                            required
+                            class="w-full pl-12 pr-4 py-4 bg-surface-container-high/50 rounded-2xl border border-transparent focus:border-primary/30 focus:bg-surface-container-high focus:ring-4 focus:ring-primary/10 text-sm transition-all outline-none"
+                        />
+                    </div>
+                </div>
+
+                <div class="pt-4">
+                    <button
+                        type="submit"
+                        class="w-full bg-primary text-white py-4 rounded-2xl font-bold shadow-xl shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                    >
+                        <span class="material-symbols-outlined text-xl"
+                            >login</span
+                        >
+                        <span>Sign In</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onclick="window.toggleTheme()"
+                        class="mt-4 w-full flex items-center justify-center gap-2 text-on-surface-variant hover:text-primary transition-colors text-xs font-bold py-2"
+                    >
+                        <span class="material-symbols-outlined text-sm"
+                            >contrast</span
+                        >
+                        <span>Toggle Color Mode</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="mt-10 pt-6 border-t border-white/10 text-center">
+                <p
+                    class="text-[10px] uppercase tracking-[0.2em] text-on-surface-variant/50 font-black"
+                >
+                    © {new Date().getFullYear()} MORENA. All rights reserved.
+                </p>
+            </div>
+        </div>
+    </div>
+</Layout>
+
+<style>
+    .glass-container {
+        background: linear-gradient(
+            135deg,
+            rgba(var(--color-surface), 0.7) 0%,
+            rgba(var(--color-surface), 0.4) 100%
+        );
+    }
+
+    @keyframes animate-shake {
+        0%,
+        100% {
+            transform: translateX(0);
+        }
+        25% {
+            transform: translateX(-4px);
+        }
+        75% {
+            transform: translateX(4px);
+        }
+    }
+    .animate-shake {
+        animation: animate-shake 0.3s ease-in-out;
+    }
+</style>

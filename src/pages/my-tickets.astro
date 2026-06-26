@@ -1,0 +1,252 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="MORENA - My Tickets" useTelegram={true}>
+    <main class="min-h-screen bg-surface font-body p-4 pb-12 relative overflow-x-hidden">
+        <div class="fixed top-6 right-6 z-[60]">
+            <button
+                onclick="window.toggleTheme()"
+                class="w-12 h-12 bg-surface-container-high/80 backdrop-blur-md rounded-full shadow-lg border border-border-color flex items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-95"
+            >
+                <span class="material-symbols-outlined">contrast</span>
+            </button>
+        </div>
+
+        <div class="max-w-xl mx-auto space-y-8">
+            <!-- Header -->
+            <header class="pt-8 text-center space-y-2">
+                <div class="inline-flex items-center justify-center w-20 h-20 bg-primary/10 rounded-[2.5rem] shadow-xl shadow-primary/5 mb-4 group">
+                    <span class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform duration-500" style="font-variation-settings: 'FILL' 1;">confirmation_number</span>
+                </div>
+                <h1 class="text-3xl font-black text-on-surface font-headline tracking-tight">Tiket Saya</h1>
+                <p class="text-on-surface-variant text-xs font-bold uppercase tracking-[0.2em] opacity-70">Assigned Work Orders</p>
+            </header>
+
+            <!-- Loading State -->
+            <div id="loading" class="flex flex-col items-center justify-center py-20 space-y-4">
+                <div class="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                <p class="text-on-surface-variant text-sm font-bold tracking-widest uppercase animate-pulse">Sinkronisasi Data...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="hidden py-16 text-center space-y-6 animate-fade-in">
+                <div class="w-24 h-24 mx-auto bg-surface-container-high rounded-full flex items-center justify-center">
+                    <span class="material-symbols-outlined text-on-surface-variant text-5xl">task_alt</span>
+                </div>
+                <div class="space-y-2">
+                    <h3 class="text-xl font-bold text-on-surface">Semua Beres!</h3>
+                    <p class="text-on-surface-variant text-sm max-w-[240px] mx-auto">Tidak ada tiket yang perlu dikerjakan saat ini. Kerja bagus!</p>
+                </div>
+                <button onclick="window.location.reload()" class="px-6 py-2.5 bg-primary/10 text-primary rounded-full font-bold text-sm hover:bg-primary/20 transition-colors">Perbarui</button>
+            </div>
+
+            <!-- Ticket List -->
+            <div id="ticketContainer" class="space-y-4 hidden pb-10">
+                <!-- Tickets injected here -->
+            </div>
+        </div>
+
+        <!-- Auth Error Overlay -->
+        <div id="authError" class="fixed inset-0 z-[100] bg-on-surface/90 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center hidden">
+            <div class="w-24 h-24 bg-error/10 text-error rounded-full flex items-center justify-center mb-6 text-6xl shadow-2xl shadow-error/20">⚠️</div>
+            <h2 class="text-2xl font-black text-white font-headline mb-4 uppercase tracking-tighter">Akses Terkunci</h2>
+            <p class="text-white/70 text-sm max-w-sm mb-8 leading-relaxed font-medium">Mini App ini hanya dapat diakses melalui Bot Telegram MORENA yang telah terverifikasi.</p>
+        </div>
+    </main>
+
+    <script is:inline>
+        let tg = window.Telegram?.WebApp;
+        let currentUserId = "";
+
+        if (tg) {
+            tg.ready();
+            tg.expand();
+            if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                currentUserId = tg.initDataUnsafe.user.id.toString();
+            }
+        }
+
+        async function fetchTickets() {
+            if (!currentUserId) {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('authError').classList.remove('hidden');
+                return;
+            }
+
+            try {
+                // Fetch both tiket_simple active tickets AND INSERA assigned tickets
+                const [tiketRes, inseraRes] = await Promise.all([
+                    fetch('/api/get-tiket-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: currentUserId, active_only: false, limit: 30 })
+                    }),
+                    fetch('/api/insera-tickets', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ user_id: currentUserId })
+                    }).catch(() => null)
+                ]);
+
+                const tiketResult = await tiketRes.json();
+                const tiketSimple = (tiketResult.status === 'success' && Array.isArray(tiketResult.data)) ? tiketResult.data : [];
+                
+                let inseraTickets = [];
+                if (inseraRes) {
+                    const inseraResult = await inseraRes.json();
+                    inseraTickets = (inseraResult.status === 'success' && Array.isArray(inseraResult.data)) ? inseraResult.data : [];
+                }
+
+                // Merge: avoid duplicates by no_tiket / order_id
+                const seenIds = new Set(tiketSimple.map(t => t.no_tiket).filter(Boolean));
+                const mergedTickets = [...tiketSimple];
+
+                for (const ins of inseraTickets) {
+                    if (!seenIds.has(ins.order_id)) {
+                        mergedTickets.push({
+                            id: ins.id,
+                            no_tiket: ins.order_id,
+                            no_inet: ins.service_no || '-',
+                            jenis: ins.ticket_type || ins.customer_type || 'INSERA',
+                            odp: ins.device_name || ins.workzone || '-',
+                            odc: ins.rk_information || '-',
+                            no_hp: ins.contact_phone || '-',
+                            jam_open: ins.reported_date || ins.created_at,
+                            jam_close: null,
+                            catatan: ins.summary || '',
+                            _source: 'insera'
+                        });
+                        seenIds.add(ins.order_id);
+                    }
+                }
+
+                // Enrich tiket_simple entries yang berasal dari insera
+                // dengan data device_name/rk_information dari inseraTickets
+                const inseraMap = new Map(inseraTickets.map(ins => [ins.order_id, ins]));
+                for (const t of mergedTickets) {
+                    if (t.no_tiket && inseraMap.has(t.no_tiket)) {
+                        const ins = inseraMap.get(t.no_tiket);
+                        if (!t.odp || t.odp === '-') t.odp = ins.device_name || ins.workzone || '-';
+                        if (!t.odc || t.odc === '-') t.odc = ins.rk_information || '-';
+                        if (!t.no_inet || t.no_inet === '-') t.no_inet = ins.service_no || '-';
+                    }
+                }
+
+                if (mergedTickets.length > 0) {
+                    renderTickets(mergedTickets);
+                } else {
+                    showEmpty();
+                }
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                showEmpty();
+            }
+        }
+
+        function showEmpty() {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+        }
+
+        function renderTickets(tickets) {
+            document.getElementById('loading').classList.add('hidden');
+            const container = document.getElementById('ticketContainer');
+
+            if (!tickets || tickets.length === 0) {
+                showEmpty();
+                return;
+            }
+
+            container.classList.remove('hidden');
+            container.innerHTML = tickets.map(ticket => {
+                const isClosed = ticket.jam_close && ticket.jam_close !== '0000-00-00 00:00:00';
+                const age = calculateAge(ticket.jam_open, isClosed ? ticket.jam_close : null);
+                const isInsera = ticket._source === 'insera';
+                
+                const statusTag = isClosed 
+                    ? '<span class="bg-green-500/10 text-green-500 text-[10px] font-black px-3 py-1 rounded-full border border-green-500/20 uppercase tracking-widest">CLOSED</span>'
+                    : '<span class="bg-primary/10 text-primary text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">' + (ticket.jenis || 'REGULER') + '</span>';
+                
+                const sourceTag = isInsera 
+                    ? '<span class="text-[8px] bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded-full font-black border border-purple-500/20 uppercase text-center min-w-[50px]">INSERA</span>' 
+                    : '';
+                
+                return `
+                <div class="bg-surface-container-lowest rounded-[2.5rem] border border-border-color overflow-hidden shadow-xl shadow-on-surface/5 active:scale-[0.98] transition-all cursor-pointer group ${isClosed ? 'opacity-90' : ''}" onclick="window.location.href='/update-my-ticket?id=${ticket.id}&source=${ticket._source || 'manual'}'">
+                    <div class="p-6 space-y-4">
+                        <div class="flex justify-between items-start">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-2">
+                                    ${statusTag}
+                                    ${sourceTag}
+                                </div>
+                                <h3 class="text-lg font-black text-on-surface font-headline leading-none pt-1">${ticket.no_tiket}</h3>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest opacity-50">${isClosed ? 'Durasi Pengerjaan' : 'Umur Tiket'}</p>
+                                <p class="text-sm font-black ${isClosed ? 'text-green-500' : 'text-primary'} font-mono ticket-timer" data-start="${ticket.jam_open}" data-end="${isClosed ? ticket.jam_close : ''}">${age}</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 pb-2">
+                            <div class="p-3 bg-surface-container-low rounded-2xl border border-border-color">
+                                <p class="text-[9px] font-bold text-on-surface-variant uppercase mb-0.5">Internet ID</p>
+                                <p class="text-sm font-black text-on-surface font-mono">${ticket.no_inet || '-'}</p>
+                            </div>
+                            <div class="p-3 bg-surface-container-low rounded-2xl border border-border-color">
+                                <p class="text-[9px] font-bold text-on-surface-variant uppercase mb-0.5">Workzone</p>
+                                <p class="text-sm font-black text-on-surface">${ticket.odp || '-'}</p>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex items-center justify-between">
+                            <div class="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
+                                <span class="material-symbols-outlined text-primary text-xl">arrow_forward_ios</span>
+                                <span class="text-xs font-bold text-primary uppercase tracking-widest">Detail & Update</span>
+                            </div>
+                            <div class="flex items-center gap-1 text-on-surface-variant/40">
+                                <span class="material-symbols-outlined text-sm">schedule</span>
+                                <span class="text-[10px] font-bold">${formatTime(ticket.jam_open)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            startTimers();
+        }
+
+        function calculateAge(jamOpen, jamClose) {
+            if (!jamOpen) return "00:00:00";
+            const start = new Date(jamOpen).getTime();
+            const end = jamClose ? new Date(jamClose).getTime() : new Date().getTime();
+            const diff = end - start;
+            if (diff < 0) return "00:00:00";
+            
+            const hours = Math.floor(diff / 3600000);
+            const mins = Math.floor((diff % 3600000) / 60000);
+            const secs = Math.floor((diff % 60000) / 1000);
+            return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function formatTime(iso) {
+            if (!iso) return '-';
+            try {
+                return new Date(iso).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' }) + ' WIB';
+            } catch(e) { return '-'; }
+        }
+
+        function startTimers() {
+            setInterval(() => {
+                document.querySelectorAll('.ticket-timer').forEach(el => {
+                    if (el.dataset.end) return; // Stop timer if closed
+                    el.textContent = calculateAge(el.dataset.start);
+                });
+            }, 1000);
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchTickets);
+    </script>
+</Layout>

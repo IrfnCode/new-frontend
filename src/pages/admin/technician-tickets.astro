@@ -1,0 +1,766 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { TechnicianModel } from "../../lib/models/TechnicianModel";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+// Guard: hanya ADMIN, KORLAP, HSA, HD yang boleh akses
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/tickets");
+}
+
+const isAdmin = role === "ADMIN";
+const isKorlapHsa = role === "KORLAP" || role === "HSA" || role === "HD KORLAP";
+const isHelpdesk = role === "HELPDESK" || role === "HD";
+
+// Hanya fetch teknisi di SSR (ringan) — tiket di-fetch client-side
+let technicians: any[] = [];
+let serviceAreas = new Set<string>();
+let dbError = null;
+
+try {
+    technicians = await TechnicianModel.getAll();
+    technicians.forEach((t: any) => {
+        if (t.service_area) serviceAreas.add(t.service_area);
+    });
+} catch (err: any) {
+    dbError = err.message;
+}
+
+// allTickets dikosongkan — akan di-fetch via API di client-side
+const allTickets: any[] = [];
+---
+
+<Layout title="MORENA Admin - Ticket Teknisi">
+    <meta name="current-user" content={username} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="technician-tickets" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-4">
+                    <span class="material-symbols-outlined text-primary text-2xl">engineering</span>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-primary font-headline tracking-tight">Ticket Teknisi</h2>
+                        <p class="text-xs text-on-surface-variant">Daftar tiket per teknisi berdasarkan Service Area</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <!-- Search Input -->
+                    <div class="relative group">
+                        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-colors">search</span>
+                        <input id="searchInput" type="text" placeholder="Cari nama, NIK, INC, No INET..." class="w-56 pl-10 pr-4 py-2.5 bg-surface-container-high border border-border-color rounded-xl text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all" />
+                    </div>
+                    <!-- Date Filter -->
+                    <div class="flex items-center gap-2 bg-surface-container-high border border-border-color rounded-xl px-3 py-1.5">
+                        <span class="material-symbols-outlined text-on-surface-variant text-[18px]">calendar_month</span>
+                        <input id="dateFrom" type="date" class="bg-transparent text-sm text-on-surface font-bold focus:outline-none cursor-pointer" title="Dari tanggal" />
+                        <span class="text-on-surface-variant text-sm">—</span>
+                        <input id="dateTo" type="date" class="bg-transparent text-sm text-on-surface font-bold focus:outline-none cursor-pointer" title="Sampai tanggal" />
+                    </div>
+                    <!-- Service Area Filter -->
+                    <div class="relative">
+                        <select id="serviceAreaFilter" class="appearance-none bg-surface-container-high border border-border-color rounded-xl px-4 py-2.5 pr-10 text-sm font-bold text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer">
+                            <option value="">Semua Service Area</option>
+                            {[...serviceAreas].sort().map((sa: string) => (
+                                <option value={sa}>{sa}</option>
+                            ))}
+                        </select>
+                        <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] pointer-events-none">expand_more</span>
+                    </div>
+                    <button onclick="window.toggleTheme()" class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant">
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-6">
+                {dbError && (
+                    <div class="bg-error/10 border border-error/20 rounded-2xl p-4 text-error text-sm font-bold">
+                        <span class="material-symbols-outlined align-middle mr-2">error</span>
+                        {dbError}
+                    </div>
+                )}
+
+                <!-- Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="flex flex-col gap-1 rounded-2xl bg-primary/5 border border-primary/20 p-5">
+                        <p class="text-primary text-[10px] font-bold uppercase tracking-widest">Total Teknisi</p>
+                        <p id="statTotalTech" class="text-primary text-3xl font-black font-headline">{technicians.length}</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-5">
+                        <p class="text-emerald-500 text-[10px] font-bold uppercase tracking-widest">Tiket Closed</p>
+                        <p id="statClosed" class="text-emerald-500 text-3xl font-black font-headline">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-amber-500/5 border border-amber-500/20 p-5">
+                        <p class="text-amber-500 text-[10px] font-bold uppercase tracking-widest">Tiket Open</p>
+                        <p id="statOpen" class="text-amber-500 text-3xl font-black font-headline">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-error/5 border border-error/20 p-5">
+                        <p class="text-error text-[10px] font-bold uppercase tracking-widest">Total Tiket</p>
+                        <p id="statTotal" class="text-error text-3xl font-black font-headline">{allTickets.length}</p>
+                    </div>
+                </div>
+
+                <!-- Technician Cards Grid -->
+                <div id="technicianGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="hidden text-center py-16">
+                    <span class="material-symbols-outlined text-6xl text-on-surface-variant/30">engineering</span>
+                    <p class="text-on-surface-variant font-bold mt-4">Tidak ada teknisi ditemukan</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Reopen Modal -->
+    <div id="reopenModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-500">
+                        <span class="material-symbols-outlined text-xl">restart_alt</span>
+                    </div>
+                    <h3 class="text-on-surface text-lg font-extrabold font-headline">Reopen Tiket</h3>
+                </div>
+                <button id="closeReopenModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="reopenTicketId" />
+                <input type="hidden" id="reopenTicketNo" />
+                
+                <div class="bg-surface-container-highest p-3 rounded-xl border border-border-color">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">No Tiket</p>
+                    <p id="reopenTicketDisplay" class="text-primary font-mono font-bold text-lg">--</p>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Catatan Reopen <span class="text-error">*</span></label>
+                    <textarea id="reopenNotes" rows="3" class="w-full px-4 py-3 bg-surface-container-high border-none rounded-xl text-on-surface text-sm focus:ring-2 focus:ring-primary/20 resize-none" placeholder="Masukkan alasan reopen tiket..."></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button id="cancelReopenBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface rounded-xl text-sm font-bold transition-colors">Batal</button>
+                    <button id="confirmReopenBtn" class="flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-amber-500/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">restart_alt</span>
+                        <span>Reopen</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Status Modal -->
+    <div id="statusModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined text-xl">published_with_changes</span>
+                    </div>
+                    <h3 class="text-on-surface text-lg font-extrabold font-headline">Ubah Status Tiket</h3>
+                </div>
+                <button id="closeStatusModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="statusTicketId" />
+                <input type="hidden" id="statusTicketNo" />
+                <input type="hidden" id="statusCurrentStatus" />
+                
+                <div class="bg-surface-container-highest p-3 rounded-xl border border-border-color">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">No Tiket</p>
+                    <p id="statusTicketDisplay" class="text-primary font-mono font-bold text-lg">--</p>
+                </div>
+
+                <div class="bg-surface-container-highest p-3 rounded-xl border border-border-color">
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-1">Status Saat Ini</p>
+                    <p id="statusCurrentDisplay" class="text-on-surface font-bold">--</p>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Ubah Ke Status</label>
+                    <select id="statusNewStatus" class="w-full px-4 py-3 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-bold focus:ring-2 focus:ring-primary/20">
+                        <option value="CLOSED">CLOSED</option>
+                        <option value="OPEN">OPEN</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Catatan (Opsional)</label>
+                    <textarea id="statusNotes" rows="2" class="w-full px-4 py-3 bg-surface-container-high border-none rounded-xl text-on-surface text-sm focus:ring-2 focus:ring-primary/20 resize-none" placeholder="Catatan perubahan status..."></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button id="cancelStatusBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface rounded-xl text-sm font-bold transition-colors">Batal</button>
+                    <button id="confirmStatusBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">check</span>
+                        <span>Simpan</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</Layout>
+
+<script is:inline define:vars={{ technicians, allTickets, username }}>
+    const technicianData = technicians || [];
+    let ticketData = allTickets || []; // akan diisi setelah fetch
+    const CURRENT_USER = username || "Admin";
+
+    // ── Fetch tiket via API (client-side, tidak blokir SSR) ──────────────
+    async function loadTickets() {
+        try {
+            const df = currentDateFrom || null;
+            const dt = currentDateTo   || null;
+
+            // Fetch paralel: manual + insera open (assigned) + insera closed
+            const [manualRes, inseraOpenRes, inseraClosedRes] = await Promise.all([
+                fetch('/api/get-tiket-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ include_all: true, limit: 1000, date_from: df, date_to: dt })
+                }).catch(() => null),
+                fetch(`/api/insera-tickets?view=open&date_from=${df||''}&date_to=${dt||''}`).catch(() => null),
+                fetch(`/api/insera-tickets?view=closed&date_from=${df||''}&date_to=${dt||''}`).catch(() => null)
+            ]);
+
+            let manual = [];
+            if (manualRes?.ok) {
+                const d = await manualRes.json();
+                manual = (d.data || []).map(t => ({ ...t, _source: t._source || 'manual' }));
+            }
+
+            let inseraOpen = [];
+            if (inseraOpenRes?.ok) {
+                const d = await inseraOpenRes.json();
+                inseraOpen = (Array.isArray(d) ? d : [])
+                    .filter(t => t.assigned_to && t.assigned_to !== '[]' && t.assigned_to !== 'null')
+                    .map(t => ({ ...t, _source: 'insera' }));
+            }
+
+            let inseraClosed = [];
+            if (inseraClosedRes?.ok) {
+                const d = await inseraClosedRes.json();
+                inseraClosed = (Array.isArray(d) ? d : []).map(t => ({ ...t, _source: 'insera' }));
+            }
+
+            // Merge insera — closed override open untuk order_id yang sama
+            const inseraMap = new Map();
+            inseraOpen.forEach(t => inseraMap.set(t.order_id || t.id, t));
+            inseraClosed.forEach(t => inseraMap.set(t.order_id || t.id, t));
+
+            ticketData = [...manual, ...Array.from(inseraMap.values())];
+            const statEl = document.getElementById('statTotal');
+            if (statEl) statEl.textContent = ticketData.length;
+            renderTechnicians(currentFilter, currentSearch, currentDateFrom, currentDateTo);
+        } catch (err) {
+            console.error('[TechTickets] loadTickets error:', err);
+        }
+    }
+
+    // Group tickets by technician
+    function groupTicketsByTech() {
+        const grouped = {};
+
+        // Buat set order_id yang sudah CLOSED (dikerjakan salah satu teknisi)
+        // Tiket ini tidak perlu ditampilkan sebagai OPEN di teknisi lain
+        const closedOrderIds = new Set(
+            ticketData
+                .filter(t => t._source === 'insera' && t.status === 'CLOSED')
+                .map(t => t.order_id)
+        );
+
+        // Buat map: order_id → teknisi yang close (dari tiket_simple)
+        const closedByNik = {};
+        ticketData
+            .filter(t => t._source === 'manual' && t.jam_close && t.jam_close !== '0000-00-00 00:00:00' && t.no_tiket)
+            .forEach(t => { closedByNik[t.no_tiket] = t.nik_teknisi || t.user_id; });
+
+        technicianData.forEach(tech => {
+            const techId = tech.id_bot_telegram;
+            const techNik = tech.nik;
+
+            // ── Manual tickets (dari tiket_simple) ──
+            const manualTickets = ticketData.filter(t => {
+                if (t._source !== 'manual') return false;
+                if (t.user_id !== techId && t.nik_teknisi !== techNik) return false;
+                // Skip tiket dengan data tidak valid
+                const noInet = t.no_inet || '';
+                if (!noInet || noInet === '-' || noInet === 'pda' || noInet.length < 5) return false;
+                return true;
+            });
+
+            // ── Insera tickets ──
+            const inseraTickets = ticketData.filter(t => {
+                if (t._source !== 'insera') return false;
+                const orderId = t.order_id;
+
+                // Cek apakah teknisi ini di-assign ke tiket ini
+                let isAssigned = false;
+                try {
+                    const assigned = t.assigned_to ? JSON.parse(t.assigned_to) : [];
+                    isAssigned = Array.isArray(assigned) && assigned.some(a => a.nik === techNik);
+                } catch { isAssigned = false; }
+
+                if (!isAssigned) return false;
+
+                if (t.status === 'CLOSED') {
+                    // Tiket CLOSED: hanya tampil di teknisi yang mengerjakan
+                    // (ada entry di tiket_simple dengan no_tiket = order_id milik teknisi ini)
+                    return manualTickets.some(m => m.no_tiket === orderId);
+                }
+
+                // Tiket OPEN/ASSIGNED: tampil di semua teknisi yang di-assign
+                // KECUALI kalau sudah ada yang close via manual input
+                if (closedByNik[orderId]) {
+                    // Sudah dikerjakan — hanya tampil di teknisi yang mengerjakan
+                    return closedByNik[orderId] === techNik;
+                }
+
+                return true;
+            });
+
+            const allTechTickets = [...manualTickets, ...inseraTickets];
+
+            if (allTechTickets.length > 0) {
+                grouped[techNik] = {
+                    technician: tech,
+                    tickets: allTechTickets,
+                    closedCount: allTechTickets.filter(t => {
+                        if (t._source === 'manual') return t.jam_close && t.jam_close !== '0000-00-00 00:00:00';
+                        return t.status === 'CLOSED';
+                    }).length,
+                    openCount: allTechTickets.filter(t => {
+                        if (t._source === 'manual') return !t.jam_close || t.jam_close === '0000-00-00 00:00:00';
+                        return t.status !== 'CLOSED';
+                    }).length
+                };
+            }
+        });
+
+        return grouped;
+    }
+
+    function renderTechnicians(filterArea = "", searchTerm = "", dateFrom = "", dateTo = "") {
+        const grid = document.getElementById("technicianGrid");
+        const empty = document.getElementById("emptyState");
+        
+        const grouped = groupTicketsByTech();
+        let techList = Object.values(grouped);
+        
+        // Filter by service area
+        if (filterArea) {
+            techList = techList.filter(g => g.technician.service_area === filterArea);
+        }
+        
+        // Filter by date range
+        if (dateFrom || dateTo) {
+            techList = techList.filter(g => {
+                g.tickets = g.tickets.filter(t => {
+                    const isClosed = t._source === 'manual'
+                        ? (t.jam_close && t.jam_close !== '0000-00-00 00:00:00')
+                        : t.status === 'CLOSED';
+
+                    // Untuk tiket CLOSED: filter by jam_close (tanggal selesai)
+                    // Untuk tiket OPEN: filter by jam_open (tanggal mulai)
+                    let relevantDate;
+                    if (isClosed) {
+                        relevantDate = t.jam_close || t.closed_at || t.updated_at;
+                    } else {
+                        relevantDate = t.jam_open || t.reported_date || t.updated_at;
+                    }
+
+                    if (!relevantDate) return false;
+
+                    const d = new Date(relevantDate);
+                    if (isNaN(d.getTime())) return false;
+
+                    const ticketDateStr = d.toISOString().split('T')[0];
+
+                    if (dateFrom && ticketDateStr < dateFrom) return false;
+                    if (dateTo && ticketDateStr > dateTo) return false;
+
+                    return true;
+                });
+
+                // Recalculate counts after date filter
+                g.closedCount = g.tickets.filter(t => {
+                    if (t._source === 'manual') return t.jam_close && t.jam_close !== '0000-00-00 00:00:00';
+                    return t.status === 'CLOSED';
+                }).length;
+                g.openCount = g.tickets.filter(t => {
+                    if (t._source === 'manual') return !t.jam_close || t.jam_close === '0000-00-00 00:00:00';
+                    return t.status !== 'CLOSED';
+                }).length;
+
+                return g.tickets.length > 0;
+            });
+        }
+        
+        // Filter by search term (nama, NIK, INC, No INET)
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase().trim();
+            techList = techList.filter(g => {
+                const tech = g.technician;
+                // Check technician name or NIK
+                if (tech.nama && tech.nama.toLowerCase().includes(term)) return true;
+                if (tech.nik && tech.nik.toLowerCase().includes(term)) return true;
+                
+                // Check tickets for INC or No INET match
+                const hasMatchingTicket = g.tickets.some(t => {
+                    const noTiket = (t.no_tiket || t.order_id || '').toLowerCase();
+                    const noInet = (t.no_inet || t.service_no || '').toLowerCase();
+                    return noTiket.includes(term) || noInet.includes(term);
+                });
+                
+                return hasMatchingTicket;
+            });
+        }
+        
+        // Sort by total tickets desc
+        techList.sort((a, b) => b.tickets.length - a.tickets.length);
+        
+        if (techList.length === 0) {
+            grid.innerHTML = "";
+            empty.classList.remove("hidden");
+            return;
+        }
+        
+        empty.classList.add("hidden");
+        
+        // Update stats
+        let totalClosed = 0, totalOpen = 0;
+        techList.forEach(g => { totalClosed += g.closedCount; totalOpen += g.openCount; });
+        document.getElementById("statClosed").textContent = totalClosed;
+        document.getElementById("statOpen").textContent = totalOpen;
+        document.getElementById("statTotalTech").textContent = techList.length;
+        
+        grid.innerHTML = techList.map(g => {
+            const tech = g.technician;
+            const tickets = g.tickets;
+            const closedCount = g.closedCount;
+            const openCount = g.openCount;
+            
+            return `
+            <div class="bg-surface-container-lowest border border-border-color rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                <!-- Tech Header -->
+                <div class="p-4 bg-surface-container-low border-b border-border-color flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-black text-sm border border-primary/20">
+                        ${tech.nama ? tech.nama.substring(0, 2).toUpperCase() : '??'}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-on-surface truncate">${tech.nama || '-'}</p>
+                        <p class="text-[10px] text-on-surface-variant font-bold uppercase">${tech.nik} • ${tech.service_area || '-'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-lg font-black text-primary">${tickets.length}</p>
+                        <p class="text-[9px] text-on-surface-variant uppercase font-bold">Tiket</p>
+                    </div>
+                </div>
+                
+                <!-- Stats Row -->
+                <div class="flex border-b border-border-color">
+                    <div class="flex-1 p-3 text-center border-r border-border-color">
+                        <p class="text-emerald-500 font-black text-lg">${closedCount}</p>
+                        <p class="text-[9px] text-on-surface-variant uppercase font-bold">Closed</p>
+                    </div>
+                    <div class="flex-1 p-3 text-center">
+                        <p class="text-amber-500 font-black text-lg">${openCount}</p>
+                        <p class="text-[9px] text-on-surface-variant uppercase font-bold">Open</p>
+                    </div>
+                </div>
+                
+                <!-- Tickets Dropdown -->
+                <div class="p-3">
+                    <button onclick="window.toggleTickets('${tech.nik}')" class="w-full flex items-center justify-between px-3 py-2 bg-surface-container-high rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container-highest transition-colors">
+                        <span class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px]">receipt_long</span>
+                            Lihat Tiket
+                        </span>
+                        <span class="material-symbols-outlined text-[18px]" id="chevron-${tech.nik}">expand_more</span>
+                    </button>
+                    
+                    <div id="tickets-${tech.nik}" class="hidden mt-2 space-y-1 max-h-[300px] overflow-y-auto custom-scrollbar">
+                        ${tickets.map(t => {
+                            const isManual = t._source === 'manual';
+                            const isClosed = isManual 
+                                ? (t.jam_close && t.jam_close !== '0000-00-00 00:00:00')
+                                : t.status === 'CLOSED';
+                            const statusClass = isClosed 
+                                ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                                : 'bg-amber-500/10 text-amber-600 border-amber-500/20';
+                            const statusLabel = isClosed ? 'CLOSED' : 'OPEN';
+                            const ticketNo = isManual ? t.no_tiket : t.order_id;
+                            const ticketId = t.id;
+                            const source = isManual ? 'manual' : 'insera';
+                            
+                            // Calculate ticket age
+                            const reportedDate = t.jam_open || t.reported_date || t.updated_at;
+                            let ticketAge = '-';
+                            if (reportedDate) {
+                                try {
+                                    const diffMs = Date.now() - new Date(reportedDate).getTime();
+                                    const h = Math.floor(diffMs / (1000 * 60 * 60));
+                                    const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                                    ticketAge = `${h}h ${m}m`;
+                                } catch {}
+                            }
+                            
+                            return `
+                            <div class="flex items-center gap-2 p-2 bg-surface-container-high rounded-lg">
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-mono font-bold text-primary truncate">${ticketNo || '-'}</p>
+                                    <p class="text-[10px] text-on-surface-variant truncate">${t.no_inet || t.service_no || '-'}</p>
+                                </div>
+                                <span class="text-[9px] font-mono text-on-surface-variant">${ticketAge}</span>
+                                <span class="px-2 py-0.5 rounded text-[9px] font-black border ${statusClass}">${statusLabel}</span>
+                                <div class="flex gap-1">
+                                    ${!isClosed ? `
+                                    <button onclick="window.sendReminder('${ticketId}', '${ticketNo || ''}', '${source}')" class="p-1 hover:bg-error/10 text-error rounded transition-colors" title="Kirim Reminder">
+                                        <span class="material-symbols-outlined text-[16px]">notifications_active</span>
+                                    </button>
+                                    ` : ''}
+                                    <button onclick="window.openReopenModal('${ticketId}', '${ticketNo || ''}', '${source}')" class="p-1 hover:bg-amber-500/10 text-amber-500 rounded transition-colors" title="Reopen">
+                                        <span class="material-symbols-outlined text-[16px]">restart_alt</span>
+                                    </button>
+                                    <button onclick="window.openStatusModal('${ticketId}', '${ticketNo || ''}', '${statusLabel}', '${source}')" class="p-1 hover:bg-primary/10 text-primary rounded transition-colors" title="Ubah Status">
+                                        <span class="material-symbols-outlined text-[16px]">published_with_changes</span>
+                                    </button>
+                                </div>
+                            </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    window.toggleTickets = function(nik) {
+        const container = document.getElementById(`tickets-${nik}`);
+        const chevron = document.getElementById(`chevron-${nik}`);
+        if (container.classList.contains('hidden')) {
+            container.classList.remove('hidden');
+            chevron.textContent = 'expand_less';
+        } else {
+            container.classList.add('hidden');
+            chevron.textContent = 'expand_more';
+        }
+    };
+
+    // Filter handlers
+    let currentFilter = "";
+    let currentSearch = "";
+    
+    // Default tanggal = hari ini
+    const todayStr = new Date().toLocaleDateString('en-CA'); // format YYYY-MM-DD
+    let currentDateFrom = todayStr;
+    let currentDateTo = todayStr;
+
+    // Set nilai default pada input
+    const dateFromEl = document.getElementById("dateFrom");
+    const dateToEl = document.getElementById("dateTo");
+    if (dateFromEl) dateFromEl.value = todayStr;
+    if (dateToEl) dateToEl.value = todayStr;
+
+    document.getElementById("serviceAreaFilter")?.addEventListener("change", (e) => {
+        currentFilter = e.target.value;
+        renderTechnicians(currentFilter, currentSearch, currentDateFrom, currentDateTo);
+    });
+
+    document.getElementById("searchInput")?.addEventListener("input", (e) => {
+        currentSearch = e.target.value;
+        renderTechnicians(currentFilter, currentSearch, currentDateFrom, currentDateTo);
+    });
+
+    document.getElementById("dateFrom")?.addEventListener("change", (e) => {
+        currentDateFrom = e.target.value;
+        loadTickets(); // reload data dari server dengan tanggal baru
+    });
+
+    document.getElementById("dateTo")?.addEventListener("change", (e) => {
+        currentDateTo = e.target.value;
+        loadTickets(); // reload data dari server dengan tanggal baru
+    });
+
+    // Initial render dengan filter hari ini (teknisi tampil dulu, tiket load di background)
+    renderTechnicians(currentFilter, currentSearch, currentDateFrom, currentDateTo);
+    loadTickets(); // fetch tiket async — tidak blokir render
+
+    // ── Send Reminder ─────────────────────────────────────────────
+    window.sendReminder = async function(id, noTiket, source) {
+        if (!confirm(`Kirim reminder untuk tiket ${noTiket}?\nNotifikasi akan dikirim ke teknisi dan grup.`)) return;
+
+        try {
+            const response = await fetch("/api/technician-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'send_reminder',
+                    id: id,
+                    noTiket: noTiket,
+                    source: source,
+                    actorName: CURRENT_USER
+                })
+            });
+
+            const result = await response.json();
+            if (result.success || result.status === 'success') {
+                alert(`✅ Reminder untuk tiket ${noTiket} telah dikirim!`);
+            } else {
+                alert(result.error || result.message || "Gagal mengirim reminder");
+            }
+        } catch (error) {
+            alert("Gagal: " + error.message);
+        }
+    };
+
+    // ── Reopen Modal ─────────────────────────────────────────────
+    let currentReopenSource = 'manual';
+    
+    window.openReopenModal = function(id, noTiket, source) {
+        document.getElementById("reopenTicketId").value = id;
+        document.getElementById("reopenTicketNo").value = noTiket;
+        document.getElementById("reopenTicketDisplay").textContent = noTiket;
+        document.getElementById("reopenNotes").value = '';
+        currentReopenSource = source || 'manual';
+        document.getElementById("reopenModal").classList.remove("hidden");
+    };
+
+    function closeReopenModal() {
+        document.getElementById("reopenModal").classList.add("hidden");
+    }
+
+    document.getElementById("closeReopenModal")?.addEventListener("click", closeReopenModal);
+    document.getElementById("cancelReopenBtn")?.addEventListener("click", closeReopenModal);
+    document.getElementById("reopenModal")?.addEventListener("click", (e) => {
+        if (e.target === document.getElementById("reopenModal")) closeReopenModal();
+    });
+
+    document.getElementById("confirmReopenBtn")?.addEventListener("click", async () => {
+        const id = document.getElementById("reopenTicketId").value;
+        const noTiket = document.getElementById("reopenTicketNo").value;
+        const notes = document.getElementById("reopenNotes").value.trim();
+        
+        if (!notes) {
+            alert("Catatan reopen wajib diisi!");
+            return;
+        }
+
+        const btn = document.getElementById("confirmReopenBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">sync</span> Memproses...';
+
+        try {
+            const response = await fetch("/api/technician-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'reopen',
+                    id: id,
+                    noTiket: noTiket,
+                    source: currentReopenSource,
+                    notes: notes,
+                    actorName: CURRENT_USER
+                })
+            });
+
+            const result = await response.json();
+            if (result.success || result.status === 'success') {
+                closeReopenModal();
+                alert(`✅ Tiket ${noTiket} berhasil di-reopen! Notifikasi telah dikirim.`);
+                location.reload();
+            } else {
+                alert(result.error || result.message || "Gagal reopen tiket");
+            }
+        } catch (error) {
+            alert("Gagal: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">restart_alt</span><span>Reopen</span>';
+        }
+    });
+
+    // ── Status Modal ─────────────────────────────────────────────
+    let currentStatusSource = 'manual';
+    
+    window.openStatusModal = function(id, noTiket, currentStatus, source) {
+        document.getElementById("statusTicketId").value = id;
+        document.getElementById("statusTicketNo").value = noTiket;
+        document.getElementById("statusCurrentStatus").value = currentStatus;
+        document.getElementById("statusTicketDisplay").textContent = noTiket;
+        document.getElementById("statusCurrentDisplay").textContent = currentStatus;
+        document.getElementById("statusNewStatus").value = currentStatus === 'CLOSED' ? 'OPEN' : 'CLOSED';
+        document.getElementById("statusNotes").value = '';
+        currentStatusSource = source || 'manual';
+        document.getElementById("statusModal").classList.remove("hidden");
+    };
+
+    function closeStatusModal() {
+        document.getElementById("statusModal").classList.add("hidden");
+    }
+
+    document.getElementById("closeStatusModal")?.addEventListener("click", closeStatusModal);
+    document.getElementById("cancelStatusBtn")?.addEventListener("click", closeStatusModal);
+    document.getElementById("statusModal")?.addEventListener("click", (e) => {
+        if (e.target === document.getElementById("statusModal")) closeStatusModal();
+    });
+
+    document.getElementById("confirmStatusBtn")?.addEventListener("click", async () => {
+        const id = document.getElementById("statusTicketId").value;
+        const noTiket = document.getElementById("statusTicketNo").value;
+        const newStatus = document.getElementById("statusNewStatus").value;
+        const notes = document.getElementById("statusNotes").value.trim();
+
+        const btn = document.getElementById("confirmStatusBtn");
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">sync</span> Memproses...';
+
+        try {
+            const response = await fetch("/api/technician-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'change_status',
+                    id: id,
+                    noTiket: noTiket,
+                    source: currentStatusSource,
+                    newStatus: newStatus,
+                    notes: notes,
+                    actorName: CURRENT_USER
+                })
+            });
+
+            const result = await response.json();
+            if (result.success || result.status === 'success') {
+                closeStatusModal();
+                alert(`✅ Status tiket ${noTiket} berhasil diubah ke ${newStatus}!`);
+                location.reload();
+            } else {
+                alert(result.error || result.message || "Gagal mengubah status");
+            }
+        } catch (error) {
+            alert("Gagal: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span class="material-symbols-outlined text-[18px]">check</span><span>Simpan</span>';
+        }
+    });
+</script>
+
+<style>
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(var(--primary-rgb, 0, 64, 161), 0.2); border-radius: 10px; }
+</style>

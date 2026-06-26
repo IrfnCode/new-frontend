@@ -1,0 +1,1283 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+const role = Astro.cookies.get("admin_role")?.value;
+// Hanya ADMIN, KORLAP, HSA yang boleh akses halaman scraper INSERA
+// HD/HELPDESK tetap bisa akses seperti sebelumnya
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/tickets");
+}
+
+import { InseraModel } from "../../lib/models/InseraModel";
+
+let recentRecords = [];
+let dbError = null;
+try {
+    const raw = await InseraModel.getAll();
+    recentRecords = (raw || []).slice(0, 15).map((wo: any) => {
+        const item = { ...wo };
+        if (typeof item.id === 'bigint') item.id = item.id.toString();
+        return item;
+    });
+} catch (e) {
+    dbError = e.message;
+    console.error("Failed to load recent records:", e.message);
+}
+
+const PUBLIC_BACKEND_URL = import.meta.env.PUBLIC_BACKEND_URL;
+---
+
+<Layout title="MORENA Admin - Ambil Data INSERA">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="insera-data" />
+
+        <main
+            class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)]"
+        >
+            <header
+                class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color"
+            >
+                <div class="flex items-center gap-8">
+                    <h2
+                        class="text-xl font-extrabold text-primary font-headline tracking-tight"
+                    >
+                        Ambil Data INSERA
+                    </h2>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button
+                        onclick="window.toggleTheme()"
+                        class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant"
+                    >
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                    <button
+                        class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant relative"
+                    >
+                        <span class="material-symbols-outlined"
+                            >notifications</span
+                        >
+                        <span
+                            class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"
+                        ></span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-8 max-w-4xl w-full">
+                <div class="flex flex-col gap-2">
+                    <p
+                        class="text-on-surface-variant text-base md:text-lg font-normal max-w-2xl"
+                    >
+                        Configure your web scraping data source to automatically collect
+                        work orders from INSERA.
+                    </p>
+                </div>
+
+                <!-- Scraping Configuration Card -->
+                <div
+                    class="flex flex-col bg-surface-container-low border border-border-color rounded-xl overflow-hidden shadow-sm"
+                >
+                    <div
+                        class="px-6 py-5 border-b border-border-color bg-surface-container-highest/30 flex justify-between items-center"
+                    >
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary"
+                                >public</span
+                            >
+                            <h2 class="text-on-surface text-lg font-bold">
+                                Data Source
+                            </h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="text-xs text-on-surface-variant uppercase font-semibold tracking-wider"
+                                >Status</span
+                            >
+                            <div
+                                id="scraperStatus"
+                                class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-container-highest text-on-surface-variant text-xs font-medium border border-border-color"
+                            >
+                                <span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span>
+                                Idle
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 flex flex-col gap-6 bg-surface-container-lowest border-x border-border-color">
+                        <!-- Target URL Input -->
+                        <label class="flex flex-col gap-2">
+                            <p class="text-on-surface text-sm font-bold">Target URL</p>
+                            <p class="text-on-surface-variant text-xs">
+                                Enter the URL of the website to scrape for work orders
+                            </p>
+                            <div class="relative group mt-1">
+                                <div
+                                    class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                                >
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant text-lg"
+                                        >link</span
+                                    >
+                                </div>
+                                <input
+                                    id="targetUrl"
+                                    class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-12 pl-10 pr-4 placeholder:text-on-surface-variant/50 text-sm font-normal transition-all"
+                                    placeholder="https://example.com/work-orders"
+                                    type="url"
+                                />
+                            </div>
+                        </label>
+
+                        <!-- Frequency Select -->
+                        <label class="flex flex-col gap-2">
+                            <p class="text-on-surface text-sm font-bold">Scraping Frequency</p>
+                            <p class="text-on-surface-variant text-xs">
+                                How often should the scraper check for new work orders
+                            </p>
+                            <div class="relative mt-1">
+                                <div
+                                    class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"
+                                >
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant text-lg"
+                                        >schedule</span
+                                    >
+                                </div>
+                                <select
+                                    id="frequency"
+                                    class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-12 pl-10 pr-4 text-sm font-normal cursor-pointer"
+                                >
+                                    <option value="2m">Every 2 Minutes</option>
+                                    <option value="5m">Every 5 Minutes</option>
+                                    <option value="15m">Every 15 Minutes</option>
+                                    <option value="1h">Every Hour</option>
+                                </select>
+                            </div>
+                        </label>
+
+                        <!-- MANUAL FILTERS SECTION -->
+                        <div class="pt-4 border-t border-border-color flex flex-col gap-4">
+                            <h3 class="text-on-surface text-md font-bold flex items-center gap-2">
+                                <span class="material-symbols-outlined text-primary"
+                                    >filter_alt</span
+                                >
+                                Manual Filters (Optional)
+                            </h3>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Reported Date Start -->
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Reported Date (From)</p>
+                                    <input
+                                        id="filterDateFrom"
+                                        type="datetime-local"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    />
+                                </label>
+
+                                <!-- Reported Date End -->
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Reported Date (To)</p>
+                                    <input
+                                        id="filterDateTo"
+                                        type="datetime-local"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    />
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Workzone -->
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Workzone</p>
+                                    <input
+                                        id="filterWorkzone"
+                                        placeholder="e.g. BTC, SLU"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    />
+                                </label>
+
+                                <!-- Witel -->
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Witel</p>
+                                    <input
+                                        id="filterWitel"
+                                        placeholder="e.g. RIKEP"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    />
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Status -->
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Status</p>
+                                    <select
+                                        id="filterStatus"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    >
+                                        <option value="">All Statuses</option>
+                                        <option value="OPEN">OPEN</option>
+                                        <option value="CLOSED">CLOSED</option>
+                                        <option value="RESOLVED">RESOLVED</option>
+                                        <option value="IN_PROGRESS">IN_PROGRESS</option>
+                                        <option value="BACKEND">BACKEND</option>
+                                    </select>
+                                </label>
+                            </div>
+
+                            <!-- Segmen Tiket -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Customer Segment</p>
+                                    <p class="text-on-surface-variant text-xs">Filter berdasarkan segmen pelanggan</p>
+                                    <select
+                                        id="filterSegmen"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal"
+                                    >
+                                        <option value="">Semua Segmen</option>
+                                        <option value="RBS">RBS</option>
+                                        <option value="PL-TSEL">PL-TSEL</option>
+                                        <option value="DGS">DGS</option>
+                                        <option value="IBG">IBG</option>
+                                        <option value="CONSUMER">Consumer</option>
+                                        <option value="ENTERPRISE">Enterprise</option>
+                                        <option value="GOVERNMENT">Government</option>
+                                        <option value="SME">SME</option>
+                                    </select>
+                                </label>
+
+                                <!-- HVC Only Toggle -->
+                                <label class="flex flex-col gap-2 justify-center">
+                                    <p class="text-on-surface text-sm font-bold">Filter HVC Saja</p>
+                                    <p class="text-on-surface-variant text-xs">Hanya ambil tiket dari pelanggan HVC</p>
+                                    <div class="flex items-center gap-3 h-10">
+                                        <button
+                                            id="toggleHvcOnly"
+                                            type="button"
+                                            onclick="this.dataset.active = this.dataset.active === 'true' ? 'false' : 'true'; this.classList.toggle('bg-primary', this.dataset.active === 'true'); this.classList.toggle('text-white', this.dataset.active === 'true'); this.classList.toggle('bg-surface-container-high', this.dataset.active !== 'true'); this.classList.toggle('text-on-surface-variant', this.dataset.active !== 'true'); this.querySelector('span').textContent = this.dataset.active === 'true' ? 'toggle_on' : 'toggle_off';"
+                                            data-active="false"
+                                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-container-high text-on-surface-variant border border-border-color text-sm font-bold transition-all"
+                                        >
+                                            <span class="material-symbols-outlined text-lg">toggle_off</span>
+                                            HVC Only
+                                        </button>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <!-- Page Size Limit -->
+                            <label class="flex flex-col gap-2">
+                                <p class="text-on-surface text-sm font-bold">Data Limit (Page Size)</p>
+                                <div class="relative mt-1">
+                                    <select
+                                        id="filterPageSize"
+                                        class="w-full rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border border-border-color bg-surface-container-high h-10 px-3 text-sm font-normal cursor-pointer"
+                                    >
+                                        <option value="10">10 Rows</option>
+                                        <option value="20">20 Rows</option>
+                                        <option value="30">30 Rows</option>
+                                        <option value="50">50 Rows</option>
+                                        <option value="100" selected>100 Rows</option>
+                                    </select>
+                                </div>
+                            </label>
+
+                            <!-- Auto Shift Dates Toggle -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="flex flex-col gap-2">
+                                    <p class="text-on-surface text-sm font-bold">Auto-Shift Tanggal</p>
+                                    <p class="text-on-surface-variant text-xs">Otomatis geser tanggal filter ke hari ini saat scraping</p>
+                                    <div class="flex items-center gap-3 h-10">
+                                        <button
+                                            id="toggleAutoShift"
+                                            type="button"
+                                            onclick="this.dataset.active = this.dataset.active === 'true' ? 'false' : 'true'; this.classList.toggle('bg-primary', this.dataset.active === 'true'); this.classList.toggle('text-white', this.dataset.active === 'true'); this.classList.toggle('bg-surface-container-high', this.dataset.active !== 'true'); this.classList.toggle('text-on-surface-variant', this.dataset.active !== 'true'); this.querySelector('span').textContent = this.dataset.active === 'true' ? 'toggle_on' : 'toggle_off';"
+                                            data-active="true"
+                                            class="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white border border-border-color text-sm font-bold transition-all"
+                                        >
+                                            <span class="material-symbols-outlined text-lg">toggle_on</span>
+                                            Auto-Shift
+                                        </button>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex flex-wrap gap-3 pt-2">
+                            <button
+                                id="testScrape"
+                                class="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl border border-border-color bg-surface hover:bg-surface-container text-on-surface text-sm font-bold shadow-sm transition-all active:scale-95"
+                            >
+                                <span class="material-symbols-outlined text-lg">bolt</span>
+                                Test Scrape
+                            </button>
+
+                            <button
+                                id="startScraping"
+                                class="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-emerald-600 hover:opacity-90 text-white text-sm font-bold shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                            >
+                                <span class="material-symbols-outlined text-lg">play_arrow</span>
+                                Start Auto-Scraping
+                            </button>
+
+                            <button
+                                id="stopScraping"
+                                class="flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-error hover:opacity-90 text-white text-sm font-bold shadow-md shadow-error/20 transition-all active:scale-95 hidden"
+                            >
+                                <span class="material-symbols-outlined text-lg">stop</span>
+                                Stop Scraping
+                            </button>
+                        </div>
+
+                        <!-- Workzone Progress Indicator -->
+                        <div id="workzoneProgress" class="hidden pt-3">
+                            <div class="bg-surface-container-highest/40 rounded-xl p-4 border border-border-color">
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-primary text-lg animate-spin">sync</span>
+                                        <span id="progressLabel" class="text-sm font-bold text-on-surface">Scraping workzone...</span>
+                                    </div>
+                                    <span id="progressCounter" class="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded-full">0/0</span>
+                                </div>
+                                <div class="w-full bg-surface-container-highest rounded-full h-2 overflow-hidden">
+                                    <div id="progressBar" class="bg-gradient-to-r from-primary to-emerald-500 h-2 rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+                                </div>
+                                <div class="flex items-center justify-between mt-2">
+                                    <span id="progressCycle" class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Siklus #0</span>
+                                    <span id="progressTickets" class="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">0 tiket</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save Configuration -->
+                    <div
+                        class="flex flex-col-reverse sm:flex-row justify-end items-center gap-4 p-6 bg-surface-container-low border-t border-border-color"
+                    >
+                        <button
+                            id="resetConfig"
+                            class="w-full sm:w-auto px-6 py-3 rounded-lg text-on-surface-variant hover:text-on-surface font-bold text-sm transition-colors"
+                        >
+                            Reset to Default
+                        </button>
+                        <button
+                            id="saveConfig"
+                            class="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 rounded-xl bg-primary hover:opacity-90 text-white font-bold text-sm shadow-lg shadow-primary/20 transition-all hover:-translate-y-0.5 active:translate-y-0"
+                        >
+                            <span class="material-symbols-outlined text-lg">save</span>
+                            Save Configuration
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Browser Monitor Section -->
+                <div
+                    class="flex flex-col bg-surface-container-low border border-border-color rounded-xl overflow-hidden shadow-sm mt-8"
+                >
+                    <div
+                        class="px-6 py-5 border-b border-border-color bg-surface-container-highest/30 flex justify-between items-center"
+                    >
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary"
+                                >computer</span
+                            >
+                            <h2 class="text-on-surface text-lg font-bold">Browser Monitor</h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="text-xs text-on-surface-variant uppercase font-semibold tracking-wider"
+                            >
+                                Browser
+                            </span>
+                            <div
+                                id="browserStatus"
+                                class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-container-highest text-on-surface-variant text-xs font-medium border border-border-color"
+                            >
+                                <span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span>
+                                Inactive
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 flex flex-col gap-4 bg-surface-container-lowest">
+                        <p class="text-on-surface-variant text-sm font-medium">
+                            Use this browser to login manually to websites that require
+                            authentication (OTP, 2FA, etc). Session will be saved for
+                            scraping.
+                        </p>
+
+                        <!-- Browser Controls -->
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button
+                                id="openBrowser"
+                                class="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:opacity-90 text-white text-sm font-bold shadow-md shadow-primary/20 transition-all active:scale-95"
+                            >
+                                <span class="material-symbols-outlined text-lg"
+                                    >open_in_browser</span
+                                >
+                                Open Browser
+                            </button>
+
+                            <button
+                                id="closeBrowser"
+                                class="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-error/50 hover:bg-error/10 text-error text-sm font-bold transition-all active:scale-95 hidden"
+                            >
+                                <span class="material-symbols-outlined text-lg">close</span>
+                                Close Browser
+                            </button>
+
+                            <!-- Navigate URL -->
+                            <div class="flex-1 flex items-center gap-2 min-w-[250px]">
+                                <input
+                                    id="browserUrl"
+                                    class="flex-1 rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border-none bg-surface-container-high h-10 px-3 placeholder:text-on-surface-variant/50 text-sm font-normal transition-all"
+                                    placeholder="Enter URL to navigate..."
+                                    type="url"
+                                />
+                                <button
+                                    id="navigateBtn"
+                                    class="flex items-center justify-center gap-1 px-4 py-2 rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface text-sm font-bold transition-all active:scale-95"
+                                >
+                                    <span class="material-symbols-outlined text-base"
+                                        >arrow_forward</span
+                                    >
+                                    Go
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Browser View -->
+                        <div
+                            id="browserViewContainer"
+                            class="relative bg-black rounded-xl border border-border-color overflow-hidden hidden shadow-inner"
+                        >
+                            <!-- Connection status overlay -->
+                            <div
+                                id="browserConnecting"
+                                class="absolute inset-0 flex items-center justify-center bg-black/80 z-10 hidden"
+                            >
+                                <div class="flex flex-col items-center gap-3">
+                                    <span class="material-symbols-outlined animate-spin text-primary text-3xl">sync</span>
+                                    <p class="text-on-surface-variant text-sm font-bold">Connecting to browser...</p>
+                                </div>
+                            </div>
+
+                            <!-- Screenshot display -->
+                            <img
+                                id="browserScreen"
+                                class="w-full cursor-crosshair min-h-[400px] object-contain"
+                                alt="Browser view will appear here"
+                            />
+
+                            <!-- Click indicator -->
+                            <div
+                                id="clickIndicator"
+                                class="absolute w-6 h-6 bg-primary/50 rounded-full pointer-events-none hidden"
+                                style="transform: translate(-50%, -50%);"
+                            ></div>
+                        </div>
+
+                        <!-- Keyboard Input -->
+                        <div id="keyboardInputContainer" class="hidden mt-2">
+                            <div class="flex items-center gap-2">
+                                <input
+                                    id="typingInput"
+                                    class="flex-1 rounded-xl text-on-surface focus:outline-0 focus:ring-2 focus:ring-primary/20 border-none bg-surface-container-high h-10 px-3 placeholder:text-on-surface-variant/50 text-sm font-normal transition-all"
+                                    placeholder="Type here and press Enter to send to browser..."
+                                />
+                                <button
+                                    id="sendTextBtn"
+                                    class="flex items-center justify-center gap-1 px-4 py-2 rounded-xl bg-primary hover:opacity-90 text-white text-sm font-bold shadow-md shadow-primary/20 transition-all active:scale-95"
+                                >
+                                    <span class="material-symbols-outlined text-base">send</span>
+                                    Send
+                                </button>
+                            </div>
+                            <p class="text-on-surface-variant/80 text-xs mt-2 font-medium">
+                                <span class="material-symbols-outlined text-[14px] align-middle text-amber-500">lightbulb</span>
+                                Click on the browser image to interact. Type in the
+                                input box above to enter text.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Panel -->
+                <div class="mt-4 rounded-xl bg-black border border-border-color overflow-hidden shadow-sm">
+                    <div
+                        class="bg-surface-container-highest/60 px-4 py-3 border-b border-border-color/30 flex justify-between items-center"
+                    >
+                        <h3
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                        >
+                            Scraper Logs
+                        </h3>
+                        <span
+                            id="logStatus"
+                            class="flex h-2 w-2 rounded-full bg-on-surface-variant"
+                        ></span>
+                    </div>
+                    <div
+                        id="logsContainer"
+                        class="p-4 font-mono text-xs text-gray-300 max-h-[300px] overflow-y-auto space-y-1.5 bg-[#0a0a0a]"
+                    >
+                        <p>
+                            <span class="text-gray-500">[--:--:--]</span>
+                            <span class="text-blue-400 font-bold">INFO:</span> Ready to
+                            start scraping...
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Recently Scraped Data Section -->
+                <div class="mt-8 flex flex-col gap-4">
+                    <div class="flex items-center justify-between px-1">
+                        <div class="flex items-center gap-3">
+                            <span class="material-symbols-outlined text-primary">analytics</span>
+                            <div class="flex flex-col">
+                                <h2 class="text-on-surface text-lg font-bold">Recently Scraped Data</h2>
+                                <div class="flex items-center gap-2">
+                                    <span class={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${dbError ? 'text-error border-error/20 bg-error/5' : 'text-emerald-500 border-emerald-500/20 bg-emerald-500/5'}`}>
+                                        {dbError ? "DB ERROR" : "CONNECTED"}
+                                    </span>
+                                    {!dbError && (
+                                        <span class="text-[9px] font-black uppercase tracking-widest text-on-surface-variant bg-surface-container-highest px-1.5 py-0.5 rounded">
+                                            {recentRecords.length} Recent Loaded
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <a href="/admin/insera-tickets" class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                            View All Tickets
+                            <span class="material-symbols-outlined text-xs">arrow_forward</span>
+                        </a>
+                    </div>
+
+                    <div class="bg-surface-container-low border border-border-color rounded-xl overflow-hidden shadow-sm">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-surface-container-highest/30">
+                                        <th class="px-4 py-3 text-[10px] font-black uppercase text-on-surface-variant tracking-wider border-b border-border-color">Order ID</th>
+                                        <th class="px-4 py-3 text-[10px] font-black uppercase text-on-surface-variant tracking-wider border-b border-border-color">Summary</th>
+                                        <th class="px-4 py-3 text-[10px] font-black uppercase text-on-surface-variant tracking-wider border-b border-border-color">Status</th>
+                                        <th class="px-4 py-3 text-[10px] font-black uppercase text-on-surface-variant tracking-wider border-b border-border-color">Workzone</th>
+                                        <th class="px-4 py-3 text-[10px] font-black uppercase text-on-surface-variant tracking-wider border-b border-border-color">Reported</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-border-color bg-surface-container-lowest">
+                                    {recentRecords.length > 0 ? recentRecords.map((rec: any) => (
+                                        <tr class="hover:bg-surface-container-low transition-colors group">
+                                            <td class="px-4 py-3 text-xs font-bold text-primary whitespace-nowrap">{rec.order_id}</td>
+                                            <td class="px-4 py-3 text-xs text-on-surface font-medium max-w-[300px] truncate">{rec.summary || rec.title || "-"}</td>
+                                            <td class="px-4 py-3 text-[10px] whitespace-nowrap">
+                                                <span class={`px-2 py-0.5 rounded-full font-black tracking-widest border border-current ${rec.status === 'CLOSED' ? 'text-gray-500 bg-gray-500/10' : 'text-emerald-500 bg-emerald-500/10'}`}>
+                                                    {rec.status || 'UNKNOWN'}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3 text-[10px] font-bold text-on-surface-variant">{rec.workzone || "-"}</td>
+                                            <td class="px-4 py-3 text-[10px] text-on-surface-variant whitespace-nowrap">
+                                                {rec.reported_date ? new Date(rec.reported_date).toLocaleString('id-ID', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : "-"}
+                                            </td>
+                                        </tr>
+                                    )) : (
+                                        <tr>
+                                            <td colspan="5" class="px-6 py-12 text-center text-xs text-on-surface-variant italic font-bold">
+                                                No records found in database. Start scraping to collect data.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</Layout>
+
+<script is:inline define:vars={{ PUBLIC_BACKEND_URL }}>
+    // Unified API URL from env or fallback
+    const API_URL = PUBLIC_BACKEND_URL;
+
+
+    const DEFAULT_TARGET_URL =
+        "https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/allTicketList";
+    const FREQUENCY_TO_MS = {
+        "2m": 120000,
+        "5m": 300000,
+        "15m": 900000,
+        "1h": 3600000,
+    };
+    function msToFrequency(ms) {
+        const n = Number(ms || 0);
+        if (n <= 120000) return "2m";
+        if (n <= 300000) return "5m";
+        if (n <= 900000) return "15m";
+        return "1h";
+    }
+    let isScrapingActive = false;
+    let sseConnection = null;
+
+    function addLog(type, message) {
+        const logsContainer = document.getElementById("logsContainer");
+        if (!logsContainer) return;
+
+        const time = new Date().toLocaleTimeString("id-ID", { hour12: false });
+        const colorClass = {
+            INFO: "text-blue-400 font-bold",
+            SUCCESS: "text-emerald-400 font-bold",
+            WARN: "text-amber-400 font-bold",
+            ERROR: "text-error font-bold",
+            WORKZONE: "text-purple-400 font-bold",
+            STATUS: "text-cyan-400 font-bold",
+        }[type] || "text-blue-400 font-bold";
+
+        const logLine = document.createElement("p");
+        logLine.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="${colorClass}">${type}:</span> ${message}`;
+        logsContainer.appendChild(logLine);
+
+        // Limit log lines to avoid overflow
+        while (logsContainer.children.length > 200) {
+            logsContainer.removeChild(logsContainer.firstChild);
+        }
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+
+    // =============================
+    // SSE Connection for Live Logs
+    // =============================
+    function connectSSE() {
+        if (sseConnection) return;
+
+        sseConnection = new EventSource(`${API_URL}/api/scrape/events`);
+
+        sseConnection.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.type === "STATUS") {
+                    updateWorkzoneProgress(data);
+                    return;
+                }
+
+                if (data.type === "CONFIG") {
+                    addLog("STATUS", "Config update detected, reloading UI...");
+                    loadConfig();
+                    return;
+                }
+
+                // Regular log event
+                addLog(data.type, data.message);
+
+                // Update progress bar for WORKZONE events
+                if (data.type === "WORKZONE") {
+                    const match = data.message.match(/\((\d+)\/(\d+)\)/);
+                    if (match) {
+                        const wzMatch = data.message.match(/workzone:\s*(\S+)/);
+                        updateWorkzoneProgress({
+                            currentIndex: parseInt(match[1]),
+                            totalWorkzones: parseInt(match[2]),
+                            currentWorkzone: wzMatch ? wzMatch[1] : "...",
+                            isRunning: true
+                        });
+                    }
+                }
+                
+                // Keep progress updated if it's a success event for a workzone
+                if (data.type === "SUCCESS" && data.message.includes("Siklus #")) {
+                     // Status polling will catch the actual total from backend
+                }
+            } catch (e) {
+                console.warn("[SSE] Parse error or malformed data", e);
+            }
+        };
+
+        sseConnection.onerror = () => {
+            // Reconnect after 5 seconds
+            sseConnection?.close();
+            sseConnection = null;
+            if (isScrapingActive) {
+                setTimeout(connectSSE, 5000);
+            }
+        };
+    }
+
+    function disconnectSSE() {
+        if (sseConnection) {
+            sseConnection.close();
+            sseConnection = null;
+        }
+    }
+
+    function updateWorkzoneProgress(progress) {
+        const progressEl = document.getElementById("workzoneProgress");
+        if (!progressEl) return;
+
+        const label = document.getElementById("progressLabel");
+        const counter = document.getElementById("progressCounter");
+        const bar = document.getElementById("progressBar");
+        const cycleEl = document.getElementById("progressCycle");
+        const ticketsEl = document.getElementById("progressTickets");
+
+        const isRunning = progress.isRunning || (progress.currentIndex > 0);
+
+        if (isRunning) {
+            progressEl.classList.remove("hidden");
+
+            if (label) label.textContent = `Scraping: ${progress.currentWorkzone || "Processing..."}`;
+            if (counter && progress.totalWorkzones > 0) {
+                counter.textContent = `${progress.currentIndex || 1}/${progress.totalWorkzones}`;
+            }
+            if (bar && progress.totalWorkzones > 0) {
+                const percent = ((progress.currentIndex || 1) / progress.totalWorkzones) * 100;
+                bar.style.width = `${percent}%`;
+            }
+            if (cycleEl) cycleEl.textContent = `Siklus #${progress.cycle || 1}`;
+            if (ticketsEl) ticketsEl.textContent = `${progress.totalTicketsFound || 0} tiket`;
+        } else {
+            // Idle state or finished
+            if (label) label.textContent = "Menunggu siklus berikutnya...";
+            if (bar) bar.style.width = "100%";
+            // Don't hide completely if was just running
+        }
+    }
+
+    function updateScraperStatus(isActive) {
+        isScrapingActive = isActive;
+        const statusEl = document.getElementById("scraperStatus");
+        const startBtn = document.getElementById("startScraping");
+        const stopBtn = document.getElementById("stopScraping");
+        const logStatus = document.getElementById("logStatus");
+        const progressEl = document.getElementById("workzoneProgress");
+
+        if (statusEl) {
+            if (isActive) {
+                statusEl.className =
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 text-xs font-bold";
+                statusEl.innerHTML =
+                    '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Active';
+            } else {
+                statusEl.className =
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-container-highest text-on-surface-variant border border-border-color text-xs font-medium";
+                statusEl.innerHTML =
+                    '<span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> Idle';
+            }
+        }
+
+        if (startBtn) startBtn.classList.toggle("hidden", isActive);
+        if (stopBtn) stopBtn.classList.toggle("hidden", !isActive);
+        if (logStatus) {
+            logStatus.className = isActive
+                ? "flex h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                : "flex h-2 w-2 rounded-full bg-on-surface-variant";
+        }
+
+        // Show/hide progress indicator
+        if (progressEl && !isActive) {
+            progressEl.classList.add("hidden");
+        }
+
+        // Connect/disconnect SSE
+        if (isActive) {
+            connectSSE();
+        } else {
+            disconnectSSE();
+        }
+    }
+
+    async function loadConfig() {
+        try {
+            const response = await fetch(`${API_URL}/api/config`);
+            const config = await response.json();
+
+            const targetUrlEl = document.getElementById("targetUrl");
+            const frequencyEl = document.getElementById("frequency");
+
+            const filterDateFromEl = document.getElementById("filterDateFrom");
+            const filterDateToEl = document.getElementById("filterDateTo");
+            const filterWorkzoneEl = document.getElementById("filterWorkzone");
+            const filterWitelEl = document.getElementById("filterWitel");
+            const filterStatusEl = document.getElementById("filterStatus");
+            const filterPageSizeEl = document.getElementById("filterPageSize");
+
+            if (targetUrlEl) targetUrlEl.value = config.targetUrl || DEFAULT_TARGET_URL;
+            if (frequencyEl && config.scrapeIntervalMs) frequencyEl.value = msToFrequency(config.scrapeIntervalMs);
+
+            if (filterDateFromEl && config.filterDateFrom)
+                filterDateFromEl.value = config.filterDateFrom;
+            if (filterDateToEl && config.filterDateTo)
+                filterDateToEl.value = config.filterDateTo;
+            if (filterWorkzoneEl && config.filterWorkzone)
+                filterWorkzoneEl.value = config.filterWorkzone;
+            if (filterWitelEl && config.filterWitel)
+                filterWitelEl.value = config.filterWitel;
+            if (filterStatusEl && config.filterStatus)
+                filterStatusEl.value = config.filterStatus;
+            if (filterPageSizeEl && config.filterPageSize)
+                filterPageSizeEl.value = config.filterPageSize;
+
+            const filterSegmenEl = document.getElementById("filterSegmen");
+            if (filterSegmenEl && config.filterSegmen)
+                filterSegmenEl.value = config.filterSegmen;
+
+            const toggleHvcOnly = document.getElementById("toggleHvcOnly");
+            if (toggleHvcOnly && config.hvcOnly) {
+                toggleHvcOnly.dataset.active = "true";
+                toggleHvcOnly.classList.add("bg-primary", "text-white");
+                toggleHvcOnly.classList.remove("bg-surface-container-high", "text-on-surface-variant");
+                toggleHvcOnly.querySelector("span").textContent = "toggle_on";
+            }
+
+            // Auto-Shift Dates toggle
+            const toggleAutoShift = document.getElementById("toggleAutoShift");
+            if (toggleAutoShift) {
+                const isActive = config.autoShiftDates !== "false";
+                toggleAutoShift.dataset.active = isActive ? "true" : "false";
+                if (isActive) {
+                    toggleAutoShift.classList.add("bg-primary", "text-white");
+                    toggleAutoShift.classList.remove("bg-surface-container-high", "text-on-surface-variant");
+                    toggleAutoShift.querySelector("span").textContent = "toggle_on";
+                } else {
+                    toggleAutoShift.classList.remove("bg-primary", "text-white");
+                    toggleAutoShift.classList.add("bg-surface-container-high", "text-on-surface-variant");
+                    toggleAutoShift.querySelector("span").textContent = "toggle_off";
+                }
+            }
+
+            addLog("INFO", "Configuration loaded from database");
+
+            await checkScraperStatus();
+        } catch (error) {
+            addLog("ERROR", "Failed to load configuration (API might be unavailable)");
+        }
+    }
+
+    async function checkScraperStatus() {
+        try {
+            const response = await fetch(`${API_URL}/api/scrape/status`);
+            const status = await response.json();
+
+            if (status.isRunning) {
+                updateScraperStatus(true);
+                addLog("INFO", "Auto-scraping is currently active in background");
+                // Update progress if available
+                if (status.progress) {
+                    updateWorkzoneProgress(status.progress);
+                }
+            }
+        } catch (error) {
+            // Ignore
+        }
+    }
+
+    async function saveConfig() {
+        const targetUrl = document.getElementById("targetUrl")?.value?.trim() || DEFAULT_TARGET_URL;
+        const frequency = document.getElementById("frequency")?.value;
+
+        // Read Filter Values
+        const filterDateFrom = document.getElementById("filterDateFrom")?.value;
+        const filterDateTo = document.getElementById("filterDateTo")?.value;
+        const filterWorkzone = document.getElementById("filterWorkzone")?.value;
+        const filterWitel = document.getElementById("filterWitel")?.value;
+        const filterStatus = document.getElementById("filterStatus")?.value;
+        const filterPageSize = document.getElementById("filterPageSize")?.value;
+        const filterSegmen = document.getElementById("filterSegmen")?.value;
+        const hvcOnly = document.getElementById("toggleHvcOnly")?.dataset.active === "true";
+        const autoShiftDates = document.getElementById("toggleAutoShift")?.dataset.active === "true" ? "true" : "false";
+
+        // Count workzones for the info log
+        const wzList = (filterWorkzone || "").split(",").map(w => w.trim()).filter(Boolean);
+
+        try {
+            const response = await fetch(`${API_URL}/api/config`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    targetUrl,
+                    scrapeIntervalMs: FREQUENCY_TO_MS[frequency] || 120000,
+                    filterDateFrom,
+                    filterDateTo,
+                    filterWorkzone,
+                    filterWitel,
+                    filterStatus,
+                    filterPageSize,
+                    filterSegmen,
+                    hvcOnly,
+                    autoShiftDates,
+                }),
+            });
+
+            const result = await response.json();
+            if (response.ok) {
+                addLog("SUCCESS", `Configuration saved successfully`);
+                if (wzList.length > 1) {
+                    addLog("INFO", `📋 ${wzList.length} workzone terkonfigurasi: ${wzList.join(", ")}`);
+                    addLog("INFO", "Scraping akan dilakukan satu per satu secara berurutan");
+                }
+                if (autoShiftDates === "true") {
+                    addLog("INFO", "📅 Auto-shift tanggal: AKTIF");
+                }
+            } else {
+                addLog("ERROR", result.error || result.msg || "Failed to save configuration");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to reach backend to save configuration");
+        }
+    }
+
+    async function testScrape() {
+        addLog("INFO", "Starting test scrape...");
+        const btn = document.getElementById('testScrape');
+        if (btn) {
+            btn.innerHTML = '<span class="material-symbols-outlined text-lg animate-spin">sync</span> Running...';
+            btn.disabled = true;
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/scrape`, { method: "POST" });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog(
+                    "SUCCESS",
+                    `Scrape completed successfully. Database updated.`,
+                );
+            } else {
+                addLog("ERROR", result.error || result.msg || "Scrape test failed");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend for test scrape");
+        } finally {
+            if (btn) {
+                btn.innerHTML = '<span class="material-symbols-outlined text-lg">bolt</span> Test Scrape';
+                btn.disabled = false;
+            }
+        }
+    }
+
+    async function startScraping() {
+        // Count workzones for user feedback
+        const wzField = document.getElementById("filterWorkzone")?.value || "";
+        const wzList = wzField.split(",").map(w => w.trim()).filter(Boolean);
+
+        if (wzList.length > 1) {
+            addLog("INFO", `🚀 Starting sequential scraping for ${wzList.length} workzones: ${wzList.join(", ")}`);
+        } else {
+            addLog("INFO", "Starting auto-scraping service...");
+        }
+
+        try {
+            const response = await fetch(`${API_URL}/api/scrape/start`, {
+                method: "POST",
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog("SUCCESS", "Auto-scraping service started (nonstop loop)");
+                updateScraperStatus(true);
+            } else {
+                addLog("ERROR", result.error || "Failed to start scraping service");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend");
+        }
+    }
+
+    async function stopScraping() {
+        addLog("INFO", "Stopping auto-scraping service...");
+
+        try {
+            const response = await fetch(`${API_URL}/api/scrape/stop`, {
+                method: "POST",
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog("SUCCESS", "Auto-scraping service stopped");
+                updateScraperStatus(false);
+            } else {
+                addLog("ERROR", result.error || "Failed to stop scraping service");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend");
+        }
+    }
+
+    // =========================
+    // Browser Monitor Functions
+    // =========================
+
+    let browserWs = null;
+    let isBrowserActive = false;
+
+    function updateBrowserStatus(isActive) {
+        isBrowserActive = isActive;
+        const statusEl = document.getElementById("browserStatus");
+        const openBtn = document.getElementById("openBrowser");
+        const closeBtn = document.getElementById("closeBrowser");
+        const viewContainer = document.getElementById("browserViewContainer");
+        const keyboardContainer = document.getElementById("keyboardInputContainer");
+
+        if (statusEl) {
+            if (isActive) {
+                statusEl.className =
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 text-xs font-bold";
+                statusEl.innerHTML =
+                    '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Active';
+            } else {
+                statusEl.className =
+                    "flex items-center gap-1.5 px-2 py-1 rounded-full bg-surface-container-highest text-on-surface-variant border border-border-color text-xs font-medium";
+                statusEl.innerHTML =
+                    '<span class="w-1.5 h-1.5 rounded-full bg-on-surface-variant"></span> Inactive';
+            }
+        }
+
+        if (openBtn) openBtn.classList.toggle("hidden", isActive);
+        if (closeBtn) closeBtn.classList.toggle("hidden", !isActive);
+        if (viewContainer) viewContainer.classList.toggle("hidden", !isActive);
+        if (keyboardContainer)
+            keyboardContainer.classList.toggle("hidden", !isActive);
+    }
+
+    async function checkBrowserStatus() {
+        try {
+            const response = await fetch(`${API_URL}/api/browser/status`);
+            const status = await response.json();
+
+            if (status.isRunning) {
+                updateBrowserStatus(true);
+                connectWebSocket();
+            }
+        } catch (error) {
+            // Browser service not available
+        }
+    }
+
+    function connectWebSocket() {
+        if (browserWs && browserWs.readyState === WebSocket.OPEN) return;
+
+        let wsUrl = window.location.origin.replace("http", "ws") + "/ws/browser";
+        if (API_URL) wsUrl = API_URL.replace("http", "ws") + "/ws/browser";
+        
+        browserWs = new WebSocket(wsUrl);
+
+        const connectingEl = document.getElementById("browserConnecting");
+        if (connectingEl) connectingEl.classList.remove("hidden");
+
+        browserWs.onopen = () => {
+            addLog("INFO", "Browser live stream connected");
+            if (connectingEl) connectingEl.classList.add("hidden");
+        };
+
+        browserWs.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === "screenshot" && data.data) {
+                    const screenImg = document.getElementById("browserScreen");
+                    if (screenImg) {
+                        screenImg.src = `data:image/jpeg;base64,${data.data}`;
+                    }
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        };
+
+        browserWs.onclose = () => {
+            addLog("INFO", "Browser live stream disconnected");
+            if (connectingEl) connectingEl.classList.add("hidden");
+        };
+
+        browserWs.onerror = () => {
+            addLog("ERROR", "Browser stream connection error");
+            if (connectingEl) connectingEl.classList.add("hidden");
+        };
+    }
+
+    function disconnectWebSocket() {
+        if (browserWs) {
+            browserWs.close();
+            browserWs = null;
+        }
+    }
+
+    async function openBrowser() {
+        addLog("INFO", "Opening browser instance...");
+
+        const browserUrlEl = document.getElementById("browserUrl");
+        const targetUrlEl = document.getElementById("targetUrl");
+        const url = browserUrlEl?.value || targetUrlEl?.value || "";
+
+        try {
+            const response = await fetch(`${API_URL}/api/browser/start`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url }),
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog("SUCCESS", "Browser successfully opened");
+                updateBrowserStatus(true);
+                connectWebSocket();
+            } else {
+                addLog("ERROR", result.error || "Failed to open back-end browser");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend browser service");
+        }
+    }
+
+    async function closeBrowserFn() {
+        addLog("INFO", "Terminating browser instance...");
+
+        try {
+            const response = await fetch(`${API_URL}/api/browser/stop`, {
+                method: "POST",
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog("SUCCESS", "Browser terminated");
+                updateBrowserStatus(false);
+                disconnectWebSocket();
+            } else {
+                addLog("ERROR", result.error || "Failed to close browser");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend browser service");
+        }
+    }
+
+    async function navigateBrowser() {
+        const browserUrlEl = document.getElementById("browserUrl");
+        const url = browserUrlEl?.value;
+
+        if (!url) {
+            addLog("ERROR", "Please enter a valid URL");
+            return;
+        }
+
+        addLog("INFO", `Navigating to ${url}...`);
+
+        try {
+            const response = await fetch(`${API_URL}/api/browser/navigate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url }),
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                addLog("SUCCESS", "Navigation command complete");
+            } else {
+                addLog("ERROR", result.error || "Navigation failed");
+            }
+        } catch (error) {
+            addLog("ERROR", "Failed to connect to backend");
+        }
+    }
+
+    async function handleBrowserClick(e) {
+        const img = e.target;
+        const rect = img.getBoundingClientRect();
+
+        // Calculate click position relative to actual browser viewport (1280x800 assuming default)
+        const scaleX = 1280 / rect.width;
+        const scaleY = 800 / rect.height;
+
+        const x = Math.round((e.clientX - rect.left) * scaleX);
+        const y = Math.round((e.clientY - rect.top) * scaleY);
+
+        // Show click indicator
+        const indicator = document.getElementById("clickIndicator");
+        if (indicator) {
+            indicator.style.left = `${e.clientX - rect.left}px`;
+            indicator.style.top = `${e.clientY - rect.top}px`;
+            indicator.classList.remove("hidden");
+            setTimeout(() => indicator.classList.add("hidden"), 300);
+        }
+
+        try {
+            await fetch(`${API_URL}/api/browser/click`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ x, y }),
+            });
+        } catch (error) {
+            addLog("ERROR", "Click interaction failed to send");
+        }
+    }
+
+    async function sendTextToBrowser() {
+        const inputEl = document.getElementById("typingInput");
+        const text = inputEl?.value;
+
+        if (!text) return;
+
+        try {
+            // Type the text
+            await fetch(`${API_URL}/api/browser/type`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text }),
+            });
+
+            // Press Enter
+            await fetch(`${API_URL}/api/browser/key`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ key: "Enter" }),
+            });
+
+            inputEl.value = "";
+        } catch (error) {
+            addLog("ERROR", "Failed to send keyboard input");
+        }
+    }
+
+    // Initialize
+    document.addEventListener("DOMContentLoaded", () => {
+        loadConfig();
+
+        document.getElementById("saveConfig")?.addEventListener("click", saveConfig);
+        document.getElementById("testScrape")?.addEventListener("click", testScrape);
+        document.getElementById("startScraping")?.addEventListener("click", startScraping);
+        document.getElementById("stopScraping")?.addEventListener("click", stopScraping);
+
+        document.getElementById("resetConfig")?.addEventListener("click", () => {
+            document.getElementById("targetUrl").value = "";
+            document.getElementById("frequency").value = "2m";
+            document.getElementById("filterDateFrom").value = "";
+            document.getElementById("filterDateTo").value = "";
+            document.getElementById("filterWorkzone").value = "";
+            document.getElementById("filterStatus").value = "";
+            document.getElementById("filterPageSize").value = "100";
+            addLog("INFO", "Configuration form reset to defaults");
+        });
+
+        // Browser monitor events
+        document.getElementById("openBrowser")?.addEventListener("click", openBrowser);
+        document.getElementById("closeBrowser")?.addEventListener("click", closeBrowserFn);
+        document.getElementById("navigateBtn")?.addEventListener("click", navigateBrowser);
+        document.getElementById("browserUrl")?.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") navigateBrowser();
+        });
+        document.getElementById("browserScreen")?.addEventListener("click", handleBrowserClick);
+        document.getElementById("sendTextBtn")?.addEventListener("click", sendTextToBrowser);
+        document.getElementById("typingInput")?.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendTextToBrowser();
+        });
+
+        // Check browser status on load
+        checkBrowserStatus();
+    });
+</script>

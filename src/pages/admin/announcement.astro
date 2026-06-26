@@ -1,0 +1,331 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { GroupModel } from "../../lib/models/GroupModel";
+
+const role = Astro.cookies.get("admin_role")?.value;
+// Hanya ADMIN, KORLAP, HSA, HD/HELPDESK yang boleh akses announcement
+if (role !== "ADMIN" && role !== "KORLAP" && role !== "HSA" && role !== "HD KORLAP" && role !== "HELPDESK" && role !== "HD") {
+    return Astro.redirect("/admin/tickets");
+}
+
+const activeGroups = await GroupModel.getActive();
+---
+
+<Layout title="MORENA Admin - Announcements">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="announcement" />
+
+        <main
+            class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)]"
+        >
+            <header
+                class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color"
+            >
+                <div class="flex items-center gap-4">
+                    <h2
+                        class="text-xl font-extrabold text-primary font-headline tracking-tight"
+                    >
+                        Broadcast Center
+                    </h2>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button
+                        onclick="window.toggleTheme()"
+                        class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant"
+                    >
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 max-w-5xl mx-auto w-full space-y-8">
+                <!-- Banner -->
+                <div
+                    class="p-8 bg-gradient-to-r from-primary/10 to-primary/5 rounded-[32px] border border-primary/20 flex flex-col md:flex-row gap-8 items-center"
+                >
+                    <div
+                        class="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center text-primary shrink-0 shadow-inner"
+                    >
+                        <span class="material-symbols-outlined text-4xl"
+                            >campaign</span
+                        >
+                    </div>
+                    <div>
+                        <h1
+                            class="text-3xl font-black font-headline tracking-tighter text-on-surface mb-2"
+                        >
+                            Push Announcement
+                        </h1>
+                        <p class="text-on-surface-variant font-medium max-w-xl">
+                            Send real-time updates to your field teams. You can
+                            broadcast text and images simultaneously to selected
+                            service area groups.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <!-- Form Section -->
+                    <div class="lg:col-span-2 space-y-8">
+                        <div
+                            class="bg-surface-container-lowest p-8 rounded-[32px] border border-border-color shadow-sm space-y-6"
+                        >
+                            <form id="announcementForm" class="space-y-6">
+                                <div class="space-y-2">
+                                    <label
+                                        class="text-xs font-black uppercase tracking-widest text-on-surface-variant/70"
+                                        >1. Select Destination Groups</label
+                                    >
+                                    <div
+                                        class="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-surface-container-low rounded-2xl border border-border-color max-h-64 overflow-y-auto custom-scrollbar"
+                                    >
+                                        <label
+                                            class="flex items-center gap-3 p-3 bg-surface rounded-xl border border-border-color hover:border-primary/40 transition-all cursor-pointer group"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                id="selectAll"
+                                                class="w-5 h-5 rounded border-on-surface-variant/20 text-primary focus:ring-primary/20"
+                                            />
+                                            <span
+                                                class="font-bold text-sm text-primary"
+                                                >SELECT ALL GROUPS</span
+                                            >
+                                        </label>
+                                        {
+                                            activeGroups.map((g: any) => (
+                                                <label class="flex items-center gap-3 p-3 bg-surface rounded-xl border border-border-color hover:border-primary/40 transition-all cursor-pointer group group-item">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="groupIds"
+                                                        value={g.group_id}
+                                                        class="w-5 h-5 rounded border-on-surface-variant/20 text-primary focus:ring-primary/20 group-checkbox"
+                                                    />
+                                                    <div class="flex flex-col">
+                                                        <span class="font-bold text-sm">
+                                                            {g.service_area}
+                                                        </span>
+                                                        <span class="text-[10px] font-mono text-on-surface-variant">
+                                                            {g.group_id}
+                                                        </span>
+                                                    </div>
+                                                </label>
+                                            ))
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label
+                                        class="text-xs font-black uppercase tracking-widest text-on-surface-variant/70"
+                                        >2. Compose Message</label
+                                    >
+                                    <textarea
+                                        name="message"
+                                        id="messageInput"
+                                        required
+                                        placeholder="Type your message here... (Markdown supported)"
+                                        class="w-full h-40 bg-surface-container-high rounded-2xl border-none focus:ring-4 focus:ring-primary/10 p-6 text-sm font-medium transition-all resize-none"
+                                    ></textarea>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label
+                                        class="text-xs font-black uppercase tracking-widest text-on-surface-variant/70"
+                                        >3. Media Attachment (Optional)</label
+                                    >
+                                    <div class="relative group">
+                                        <input
+                                            type="file"
+                                            name="image"
+                                            id="imageInput"
+                                            accept="image/*"
+                                            class="hidden"
+                                        />
+                                        <button
+                                            type="button"
+                                            onclick="document.getElementById('imageInput').click()"
+                                            class="w-full flex items-center justify-center gap-3 p-6 border-2 border-dashed border-border-color rounded-2xl hover:border-primary/50 hover:bg-primary/5 transition-all text-on-surface-variant"
+                                        >
+                                            <span
+                                                class="material-symbols-outlined"
+                                                >add_photo_alternate</span
+                                            >
+                                            <span
+                                                id="fileName"
+                                                class="font-bold text-sm"
+                                                >Click to upload imagery</span
+                                            >
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="pt-4">
+                                    <button
+                                        type="submit"
+                                        id="submitBtn"
+                                        class="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-primary/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-3"
+                                    >
+                                        <span class="material-symbols-outlined"
+                                            >send</span
+                                        >
+                                        <span>EXECUTE BROADCAST</span>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Status & Logs -->
+                    <div class="space-y-8">
+                        <div
+                            class="bg-surface-container-lowest p-8 rounded-[32px] border border-border-color shadow-sm space-y-4"
+                        >
+                            <h3
+                                class="text-sm font-black uppercase tracking-widest text-on-surface-variant/70 mb-4 flex items-center gap-2"
+                            >
+                                <span class="material-symbols-outlined text-sm"
+                                    >history</span
+                                >
+                                Broadcast Progress
+                            </h3>
+                            <div
+                                id="statusList"
+                                class="space-y-3 min-h-[300px]"
+                            >
+                                <div
+                                    class="flex flex-col items-center justify-center h-full py-20 text-on-surface-variant/40"
+                                >
+                                    <span
+                                        class="material-symbols-outlined text-4xl mb-2"
+                                        >pending_actions</span
+                                    >
+                                    <p
+                                        class="text-xs font-bold uppercase tracking-widest"
+                                    >
+                                        Awaiting deployment
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline>
+        document.addEventListener("DOMContentLoaded", () => {
+            const selectAll = document.getElementById("selectAll");
+            const checkboxes = document.querySelectorAll(".group-checkbox");
+            const imageInput = document.getElementById("imageInput");
+            const fileName = document.getElementById("fileName");
+            const form = document.getElementById("announcementForm");
+            const statusList = document.getElementById("statusList");
+            const submitBtn = document.getElementById("submitBtn");
+
+            selectAll.onchange = (e) => {
+                checkboxes.forEach((cb) => (cb.checked = e.target.checked));
+            };
+
+            imageInput.onchange = (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    fileName.innerText = e.target.files[0].name;
+                    fileName.classList.add("text-primary");
+                }
+            };
+
+            form.onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+
+                // Check if any groups selected
+                const selected = fd.getAll("groupIds");
+                if (selected.length === 0) {
+                    alert("Please select at least one destination group!");
+                    return;
+                }
+
+                if (
+                    !confirm(
+                        `Are you sure you want to broadcast this message to ${selected.length} groups?`,
+                    )
+                )
+                    return;
+
+                // UI Loading
+                submitBtn.disabled = true;
+                submitBtn.innerHTML =
+                    '<span class="material-symbols-outlined animate-spin">sync</span> <span>BROADCASTING...</span>';
+                statusList.innerHTML =
+                    '<div class="space-y-4 animate-pulse">' +
+                    selected
+                        .map(
+                            () =>
+                                '<div class="h-12 bg-surface-container-high rounded-xl"></div>',
+                        )
+                        .join("") +
+                    "</div>";
+
+                try {
+                    const res = await fetch("/api/send-announcement", {
+                        method: "POST",
+                        body: fd,
+                    });
+                    const result = await res.json();
+
+                    if (result.status === "success") {
+                        statusList.innerHTML = result.data
+                            .map(
+                                (r) => `
+                            <div class="flex items-center justify-between p-4 bg-surface rounded-xl border ${r.status === "success" ? "border-emerald-200" : "border-error/20"} transition-all">
+                                <div class="flex items-center gap-3">
+                                    <span class="material-symbols-outlined text-sm ${r.status === "success" ? "text-emerald-500" : "text-error"}">
+                                        ${r.status === "success" ? "check_circle" : "error"}
+                                    </span>
+                                    <span class="text-xs font-bold">${r.group}</span>
+                                </div>
+                                <span class="text-[10px] uppercase font-black tracking-widest ${r.status === "success" ? "text-emerald-600" : "text-error"}">
+                                    ${r.status.toUpperCase()}
+                                </span>
+                            </div>
+                        `,
+                            )
+                            .join("");
+
+                        if (result.data.every((r) => r.status === "success")) {
+                            alert(
+                                "Broadcast successfully delivered to all groups!",
+                            );
+                            form.reset();
+                            fileName.innerText = "Click to upload imagery";
+                            fileName.classList.remove("text-primary");
+                        }
+                    } else {
+                        alert("Broadcast Aborted: " + result.msg);
+                    }
+                } catch (err) {
+                    alert("System Link Failure: " + err.message);
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML =
+                        '<span class="material-symbols-outlined">send</span> <span>EXECUTE BROADCAST</span>';
+                }
+            };
+        });
+    </script>
+</Layout>
+
+<style>
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(var(--primary-rgb), 0.1);
+        border-radius: 10px;
+    }
+</style>

@@ -1,0 +1,226 @@
+---
+import Layout from "../layouts/Layout.astro";
+const logoSrc = "/logo-morena.png?v3";
+---
+
+<Layout title="MORENA - Sistem Tiket Operasional">
+	<!-- Hero Section with Background Texture -->
+	<div
+		class="relative min-h-screen flex flex-col items-center justify-center overflow-hidden"
+	>
+		<!-- Structural Background Elements -->
+		<div class="absolute inset-0 z-0">
+			<div
+				class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-secondary-container/30 blur-[120px]"
+			>
+			</div>
+			<div
+				class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-primary-container/10 blur-[150px]"
+			>
+			</div>
+			<div
+				class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.03]"
+				style="background-image: radial-gradient(circle at 25% 25%, var(--primary) 0, transparent 30%), radial-gradient(circle at 75% 75%, var(--tertiary) 0, transparent 30%);"
+			>
+			</div>
+		</div>
+
+		<!-- Top Navigation Shell -->
+		<header
+			class="sticky top-0 z-50 flex justify-between items-center px-8 py-6 w-full max-w-7xl mx-auto bg-transparent"
+		>
+			<div class="flex items-center gap-3">
+				<img
+					src={logoSrc}
+					alt="MORENA"
+					class="h-12 md:h-14 w-auto max-w-[260px] object-contain"
+				/>
+			</div>
+			<div class="flex items-center gap-6">
+				<button
+					onclick="window.toggleTheme()"
+					class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors"
+					>dark_mode</button
+				>
+				<button
+					class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors"
+					>notifications</button
+				>
+				<div
+					class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center overflow-hidden border border-border-color"
+				>
+					<span class="text-xs font-bold text-on-surface-variant">MN</span>
+				</div>
+			</div>
+		</header>
+
+		<!-- Main Content -->
+		<main
+			class="relative z-10 w-full max-w-5xl px-6 flex flex-col items-center text-center py-12 md:py-20"
+		>
+			<div class="space-y-4 mb-16">
+				<h1
+					class="text-5xl md:text-7xl font-extrabold font-headline tracking-tight text-on-surface"
+				>
+					Sistem <span
+						class="bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent"
+						>Tiket</span
+					>
+				</h1>
+				<p
+					class="text-lg md:text-xl text-on-surface-variant font-medium max-w-2xl mx-auto leading-relaxed"
+				>
+					Kelola tiket pekerjaan teknisi dengan mudah melalui platform
+					terintegrasi dan sistem pelaporan otomatis yang efisien.
+				</p>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+				<!-- Admin Login Card -->
+				<a class="group relative block" href="/admin">
+					<div
+						class="glass-card p-10 rounded-xl h-full flex flex-col items-center justify-center transition-all duration-300 hover:shadow-2xl hover:shadow-primary/5 hover:-translate-y-2 border border-white/40 dark:border-white/10"
+					>
+						<div
+							class="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300"
+						>
+							<span
+								class="material-symbols-outlined text-4xl text-primary"
+								style="font-variation-settings: 'FILL' 1;"
+								>lock</span
+							>
+						</div>
+						<h2
+							class="text-2xl font-bold font-headline mb-3 text-on-surface"
+						>
+							Admin Login
+						</h2>
+						<p class="text-on-surface-variant mb-8 max-w-[240px]">
+							Akses dashboard pusat untuk monitoring dan manajemen
+							tugas teknisi.
+						</p>
+						<div
+							class="mt-auto inline-flex items-center justify-center px-8 py-3 bg-gradient-to-br from-primary to-primary-container text-white rounded-full font-bold tracking-tight shadow-lg shadow-primary/20 transition-all hover:opacity-90"
+						>
+							Masuk Sekarang
+						</div>
+					</div>
+				</a>
+
+				<!-- Bot Telegram Card -->
+				<a
+					class="group relative block"
+					href="https://t.me/Technician_Batam_Bot"
+					target="_blank"
+				>
+					<div
+						class="glass-card p-10 rounded-xl h-full flex flex-col items-center justify-center transition-all duration-300 hover:shadow-2xl hover:shadow-tertiary/5 hover:-translate-y-2 border border-white/40 dark:border-white/10"
+					>
+						<div
+							class="w-20 h-20 rounded-full bg-tertiary/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300"
+						>
+							<span
+								class="material-symbols-outlined text-4xl text-tertiary"
+								style="font-variation-settings: 'FILL' 1;"
+								>smart_toy</span
+							>
+						</div>
+						<h2
+							class="text-2xl font-bold font-headline mb-3 text-on-surface"
+						>
+							Bot Telegram
+						</h2>
+						<p class="text-on-surface-variant mb-8 max-w-[240px]">
+							Laporkan pekerjaan dan cek status tiket secara
+							instan via Telegram.
+						</p>
+						<div
+							class="mt-auto inline-flex items-center justify-center px-8 py-3 bg-surface-container-low dark:bg-surface-container text-on-surface border border-surface-container-highest rounded-full font-bold tracking-tight shadow-sm transition-all hover:bg-surface-container-low/80"
+						>
+							Mulai Chat
+						</div>
+					</div>
+				</a>
+			</div>
+
+			<!-- Secondary Utility Indicators -->
+			<div class="mt-24 w-full grid grid-cols-2 md:grid-cols-4 gap-4">
+				<div
+					class="bg-surface-container-low dark:bg-surface-container/50 p-6 rounded-lg text-center"
+				>
+					<span class="block text-3xl font-bold text-primary mb-1"
+						>2.4k+</span
+					>
+					<span
+						class="text-xs uppercase tracking-widest font-bold text-on-surface-variant"
+						>Tiket Selesai</span
+					>
+				</div>
+				<div
+					class="bg-surface-container-low dark:bg-surface-container/50 p-6 rounded-lg text-center"
+				>
+					<span class="block text-3xl font-bold text-primary mb-1"
+						>150+</span
+					>
+					<span
+						class="text-xs uppercase tracking-widest font-bold text-on-surface-variant"
+						>Teknisi Aktif</span
+					>
+				</div>
+				<div
+					class="bg-surface-container-low dark:bg-surface-container/50 p-6 rounded-lg text-center"
+				>
+					<span class="block text-3xl font-bold text-primary mb-1"
+						>99.9%</span
+					>
+					<span
+						class="text-xs uppercase tracking-widest font-bold text-on-surface-variant"
+						>Uptime Sistem</span
+					>
+				</div>
+				<div
+					class="bg-surface-container-low dark:bg-surface-container/50 p-6 rounded-lg text-center"
+				>
+					<span class="block text-3xl font-bold text-primary mb-1"
+						>15m</span
+					>
+					<span
+						class="text-xs uppercase tracking-widest font-bold text-on-surface-variant"
+						>Avg Respon</span
+					>
+				</div>
+			</div>
+		</main>
+
+		<!-- Footer -->
+		<footer
+			class="w-full max-w-7xl mx-auto px-8 py-12 mt-auto border-t border-surface-container-highest/50"
+		>
+			<div
+				class="flex flex-col md:flex-row justify-between items-center gap-6"
+			>
+				<div class="flex items-center gap-3">
+					<img
+						src={logoSrc}
+						alt="MORENA"
+						class="h-12 w-auto max-w-[240px] object-contain"
+					/>
+				</div>
+				<div class="flex gap-8">
+					<a
+						class="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors"
+						href="#">Panduan</a
+					>
+					<a
+						class="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors"
+						href="#">Kebijakan Privasi</a
+					>
+					<a
+						class="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors"
+						href="#">Bantuan</a
+					>
+				</div>
+			</div>
+		</footer>
+	</div>
+</Layout>

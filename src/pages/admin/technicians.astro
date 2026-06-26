@@ -1,0 +1,653 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+const role = Astro.cookies.get("admin_role")?.value;
+// Hanya ADMIN, KORLAP, HSA, HD/HELPDESK yang boleh akses halaman karyawan
+if (role !== "ADMIN" && role !== "KORLAP" && role !== "HSA" && role !== "HD KORLAP" && role !== "HELPDESK" && role !== "HD") {
+    return Astro.redirect("/admin/tickets");
+}
+---
+
+<Layout title="MORENA Admin - Technicians">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="technicians" />
+
+        <!-- Main Content Area -->
+        <main
+            class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)]"
+        >
+            <!-- TopNavBar Shell -->
+            <header
+                class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color"
+            >
+                <div class="flex items-center gap-8">
+                    <h2
+                        class="text-xl font-extrabold text-primary font-headline tracking-tight"
+                    >
+                        Technician Directory
+                    </h2>
+                    <div class="hidden md:flex relative group">
+                        <span
+                            class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
+                            >search</span
+                        >
+                        <input
+                            id="searchInput"
+                            class="pl-10 pr-4 py-2 bg-surface-container-high rounded-full border-none focus:ring-2 focus:ring-primary/20 text-sm w-64 transition-all"
+                            placeholder="Search technician..."
+                            type="text"
+                        />
+                        <div
+                            id="searchLoader"
+                            class="hidden absolute right-3 top-1/2 -translate-y-1/2"
+                        >
+                            <span
+                                class="material-symbols-outlined text-sm animate-spin text-primary"
+                                >sync</span
+                            >
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button
+                        onclick="window.toggleTheme()"
+                        class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant"
+                    >
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                    <button
+                        class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant relative"
+                    >
+                        <span class="material-symbols-outlined"
+                            >notifications</span
+                        >
+                        <span
+                            class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"
+                        ></span>
+                    </button>
+                    <button
+                        id="addTechBtn"
+                        class="ml-4 bg-gradient-to-r from-primary to-primary-container text-white px-6 py-2.5 rounded-full font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
+                    >
+                        <span class="material-symbols-outlined text-sm"
+                            >add</span
+                        >
+                        <span>Add New Technician</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Content Canvas -->
+            <div class="p-8 space-y-8">
+                <!-- Quick Stats Bento -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div
+                        class="bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-border-color"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <div
+                                class="p-2 bg-primary/10 rounded-lg text-primary"
+                            >
+                                <span class="material-symbols-outlined"
+                                    >groups</span
+                                >
+                            </div>
+                            <span class="text-xs font-bold text-emerald-600"
+                                >+12%</span
+                            >
+                        </div>
+                        <p class="text-on-surface-variant text-sm font-medium">
+                            Total Force
+                        </p>
+                        <h3
+                            class="text-2xl font-bold font-headline mt-1"
+                            id="totalForce"
+                        >
+                            -
+                        </h3>
+                    </div>
+                    <div
+                        class="bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-border-color"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <div
+                                class="p-2 bg-emerald-100 rounded-lg text-emerald-700"
+                            >
+                                <span class="material-symbols-outlined"
+                                    >online_prediction</span
+                                >
+                            </div>
+                            <span class="text-xs font-bold text-emerald-600"
+                                >92%</span
+                            >
+                        </div>
+                        <p class="text-on-surface-variant text-sm font-medium">
+                            Active Now
+                        </p>
+                        <h3
+                            class="text-2xl font-bold font-headline mt-1"
+                            id="activeNow"
+                        >
+                            -
+                        </h3>
+                    </div>
+                    <div
+                        class="bg-surface-container-lowest p-6 rounded-lg shadow-sm border border-border-color"
+                    >
+                        <div class="flex items-center justify-between mb-4">
+                            <div
+                                class="p-2 bg-tertiary/10 rounded-lg text-tertiary"
+                            >
+                                <span class="material-symbols-outlined"
+                                    >map</span
+                                >
+                            </div>
+                        </div>
+                        <p class="text-on-surface-variant text-sm font-medium">
+                            Service Areas
+                        </p>
+                        <h3
+                            class="text-2xl font-bold font-headline mt-1"
+                            id="totalServiceAreas"
+                        >
+                            -
+                        </h3>
+                    </div>
+                </div>
+
+                <!-- Technician Table Section -->
+                <div
+                    class="bg-surface-container-lowest rounded-lg shadow-sm overflow-hidden border border-border-color"
+                >
+                    <div
+                        class="p-6 flex items-center justify-between border-b border-border-color bg-surface-container-low/30"
+                    >
+                        <h3 class="font-headline font-bold text-lg">
+                            Personnel Directory
+                        </h3>
+                        <div class="flex gap-2">
+                            <button
+                                class="px-4 py-2 rounded-full text-sm font-bold bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                                >Filter</button
+                            >
+                            <button
+                                id="exportBtn"
+                                class="px-4 py-2 rounded-full text-sm font-bold bg-primary text-white hover:opacity-90 transition-colors flex items-center gap-2"
+                            >
+                                <span class="material-symbols-outlined text-sm"
+                                    >download</span
+                                >
+                                <span>Export XLSX</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-surface-container-low/50">
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant"
+                                        >Technician</th
+                                    >
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant"
+                                        >NIK</th
+                                    >
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant"
+                                        >Area & Sektor</th
+                                    >
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant"
+                                        >Telegram</th
+                                    >
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant"
+                                        >Korlap</th
+                                    >
+                                    <th
+                                        class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-on-surface-variant text-right"
+                                        >Actions</th
+                                    >
+                                </tr>
+                            </thead>
+                            <tbody
+                                class="divide-y divide-border-color text-on-surface"
+                                id="techTableBody"
+                            >
+                                <tr
+                                    ><td
+                                        colspan="6"
+                                        class="px-6 py-10 text-center"
+                                        >Loading personnel data...</td
+                                    ></tr
+                                >
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Form -->
+    <div
+        id="techModal"
+        class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-sm hidden"
+    >
+        <div
+            class="bg-surface w-full max-w-xl rounded-2xl shadow-2xl border border-border-color overflow-hidden transform transition-all"
+        >
+            <div
+                class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface-container-low/30"
+            >
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary"
+                    >
+                        <span class="material-symbols-outlined"
+                            >engineering</span
+                        >
+                    </div>
+                    <h3 class="text-xl font-bold font-headline" id="modalTitle">
+                        Manage Technician
+                    </h3>
+                </div>
+                <button
+                    class="close-btn text-on-surface-variant hover:text-error transition-colors"
+                >
+                    <span class="material-symbols-outlined text-2xl">close</span
+                    >
+                </button>
+            </div>
+            <form id="techForm" class="p-6 space-y-4">
+                <input type="hidden" name="action" id="action" value="add" />
+                <input type="hidden" name="id" id="tech_id" />
+                <input type="hidden" name="nik_lama" id="nik_lama" />
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >NIK <span class="text-error">*</span></label
+                        >
+                        <input
+                            type="text"
+                            name="nik"
+                            id="nik"
+                            required
+                            placeholder="NIK"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Nama <span class="text-error">*</span></label
+                        >
+                        <input
+                            type="text"
+                            name="nama"
+                            id="nama"
+                            required
+                            placeholder="Nama Lengkap"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Posisi</label
+                        >
+                        <input
+                            type="text"
+                            name="posisi"
+                            id="posisi"
+                            placeholder="Contoh: Teknisi B2B / OPERATION"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Sektor</label
+                        >
+                        <input
+                            type="text"
+                            name="sektor"
+                            id="sektor"
+                            placeholder="Contoh: BUM / SLU / LBJ / BTC"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Service Area</label
+                        >
+                        <input
+                            type="text"
+                            name="service_area"
+                            id="service_area"
+                            placeholder="Contoh: Lubuk Baja / Sagulung"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Korlap NIK</label
+                        >
+                        <input
+                            type="text"
+                            name="korlap_nik"
+                            id="korlap_nik"
+                            placeholder="NIK Korlap (opsional)"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >ID Bot Telegram</label
+                        >
+                        <input
+                            type="text"
+                            name="id_bot_telegram"
+                            id="id_bot_telegram"
+                            placeholder="ID Telegram (angka)"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                    <div class="space-y-1">
+                        <label
+                            class="text-xs font-bold text-on-surface-variant uppercase tracking-wider"
+                            >Tag Telegram</label
+                        >
+                        <input
+                            type="text"
+                            name="tag_telegram"
+                            id="tag_telegram"
+                            placeholder="@username"
+                            class="w-full bg-surface-container-high rounded-xl border-none focus:ring-2 focus:ring-primary/20 p-3 text-sm"
+                        />
+                    </div>
+                </div>
+                <div class="pt-4">
+                    <button
+                        type="submit"
+                        class="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg shadow-primary/20 hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                    >
+                        <span class="material-symbols-outlined text-sm"
+                            >save</span
+                        >
+                        <span>Save Personnel Data</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script is:inline>
+        async function loadTechnicians() {
+            const tbody = document.getElementById("techTableBody");
+            try {
+                const res = await fetch("/api/get-chart-data");
+                const stats = await res.json();
+
+                // Fetch full data using JSON endpoint
+                const resFull = await fetch("/api/manage-technician");
+                const result = await resFull.json();
+
+                if (result.status !== "success")
+                    throw new Error(
+                        result.msg || result.message || "Gagal sinkron data",
+                    );
+                const rows = result.data;
+
+                const active = stats.stats.active_now || 0;
+                const total = rows.length;
+
+                document.getElementById("totalForce").innerText = total;
+                document.getElementById("activeNow").innerText = active;
+                document.getElementById("totalServiceAreas").innerText =
+                    stats.stats.total_area || "-";
+
+                tbody.innerHTML = rows
+                    .map((t) => {
+                        const initials = t.nama.substring(0, 2).toUpperCase();
+                        return `
+                        <tr class="hover:bg-surface-container-low transition-colors group">
+                            <td class="px-6 py-5">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary font-bold text-xs">${initials}</div>
+                                    <div>
+                                        <p class="font-bold text-on-surface leading-tight">${t.nama}</p>
+                                        <p class="text-[10px] text-on-surface-variant uppercase tracking-wider font-bold">${t.posisi || "TECHNICIAN"}</p>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-5 text-sm font-medium text-on-surface-variant">${t.nik}</td>
+                            <td class="px-6 py-5">
+                                <div class="flex flex-col gap-1">
+                                    <span class="text-xs font-bold text-on-surface">${t.service_area || "-"}</span>
+                                    <span class="text-[10px] text-on-surface-variant uppercase font-bold">${t.sektor || "-"}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-5">
+                                <div class="flex flex-col">
+                                    <span class="font-mono text-[10px] text-primary font-bold">${t.id_bot_telegram || "-"}</span>
+                                    <span class="text-[10px] text-secondary font-bold">${t.tag_telegram || ""}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-5 text-xs font-bold text-on-surface-variant">${t.korlap_nik || "-"}</td>
+                            <td class="px-6 py-5 text-right">
+                                <div class="flex justify-end gap-2">
+                                    <button onclick="editTech('${t.nik}', '${t.nama}', '${t.posisi || ""}', '${t.sektor || ""}', '${t.service_area || ""}', '${t.id_bot_telegram || ""}', '${t.tag_telegram || ""}', '${t.korlap_nik || ""}')" class="p-2 rounded-lg hover:bg-primary/10 text-primary transition-colors">
+                                        <span class="material-symbols-outlined text-xl">edit</span>
+                                    </button>
+                                    <button onclick="deleteTech('${t.nik}')" class="p-2 rounded-lg hover:bg-error/10 text-error transition-colors">
+                                        <span class="material-symbols-outlined text-xl">delete</span>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                    })
+                    .join("");
+            } catch (err) {
+                console.error("Sync Error:", err);
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-error font-bold italic">
+                        Failed to synchronize personnel database.<br/>
+                        <span class="text-[10px] font-mono opacity-70">${err.message}</span>
+                    </td></tr>`;
+            }
+        }
+
+        window.editTech = (
+            nik,
+            nama,
+            posisi,
+            sektor,
+            service_area,
+            id_bot,
+            tag_telegram,
+            korlap,
+        ) => {
+            document.getElementById("modalTitle").innerText = "Edit Technician";
+            document.getElementById("action").value = "edit";
+            document.getElementById("nik_lama").value = nik;
+
+            document.getElementById("nik").value = nik;
+            document.getElementById("nama").value = nama;
+            document.getElementById("posisi").value =
+                posisi !== "null" ? posisi : "";
+            document.getElementById("sektor").value =
+                sektor !== "null" ? sektor : "";
+            document.getElementById("service_area").value =
+                service_area !== "null" ? service_area : "";
+            document.getElementById("id_bot_telegram").value =
+                id_bot !== "null" ? id_bot : "";
+            document.getElementById("tag_telegram").value =
+                tag_telegram !== "null" ? tag_telegram : "";
+            document.getElementById("korlap_nik").value =
+                korlap !== "null" ? korlap : "";
+
+            document.getElementById("techModal").classList.remove("hidden");
+        };
+
+        window.deleteTech = async (id) => {
+            if (
+                !confirm(
+                    "Are you sure you want to remove this technician from the system?",
+                )
+            )
+                return;
+            const fd = new FormData();
+            fd.append("action", "delete");
+            fd.append("ids", id); // API expects 'ids' (comma separated)
+            await fetch("/api/manage-technician", { method: "POST", body: fd });
+            loadTechnicians();
+        };
+
+        let pollInterval;
+        document.addEventListener("DOMContentLoaded", () => {
+            loadTechnicians();
+
+            // Start Polling
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(loadTechnicians, 30000);
+
+            // UI Event Listeners
+            const addTechBtn = document.getElementById("addTechBtn");
+            if (addTechBtn) {
+                addTechBtn.onclick = () => {
+                    document
+                        .getElementById("techModal")
+                        .classList.remove("hidden");
+                    document.getElementById("modalTitle").innerText =
+                        "Add New Technician";
+                    document.getElementById("techForm").reset();
+                    document.getElementById("action").value = "add";
+                };
+            }
+
+            const closeBtn = document.querySelector(".close-btn");
+            if (closeBtn) {
+                closeBtn.onclick = () =>
+                    document
+                        .getElementById("techModal")
+                        .classList.add("hidden");
+            }
+
+            const searchInput = document.getElementById("searchInput");
+            const searchLoader = document.getElementById("searchLoader");
+            let searchTimeout;
+            let cachedRows = null;
+
+            if (searchInput) {
+                searchInput.oninput = (e) => {
+                    const query = e.target.value.toLowerCase().trim();
+                    if (searchLoader) searchLoader.classList.remove("hidden");
+
+                    // Cache rows if not already cached
+                    if (!cachedRows) {
+                        cachedRows = Array.from(
+                            document.querySelectorAll("#techTableBody tr"),
+                        );
+                    }
+
+                    if (searchTimeout) clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        cachedRows.forEach((row) => {
+                            // Using textContent is much faster than innerText (no reflow)
+                            const text = row.textContent.toLowerCase();
+                            row.style.display = text.includes(query)
+                                ? ""
+                                : "none";
+                        });
+                        if (searchLoader) searchLoader.classList.add("hidden");
+                    }, 150); // Reduced delay to 150ms for snappier feel with optimizations
+                };
+            }
+
+            const techForm = document.getElementById("techForm");
+            if (techForm) {
+                techForm.onsubmit = async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(e.target);
+                    const res = await fetch("/api/manage-technician", {
+                        method: "POST",
+                        body: fd,
+                    });
+                    const result = await res.json();
+                    if (result.status === "success") {
+                        alert("Data Personnel Berhasil Disimpan!");
+                        window.location.reload();
+                    } else {
+                        alert(
+                            result.msg ||
+                                result.message ||
+                                "Gagal menyimpan data",
+                        );
+                    }
+                };
+            }
+
+            const exportBtn = document.getElementById("exportBtn");
+            if (exportBtn) {
+                exportBtn.onclick = async () => {
+                    const originalContent = exportBtn.innerHTML;
+                    exportBtn.disabled = true;
+                    exportBtn.innerHTML = `<span class="material-symbols-outlined text-sm animate-spin">sync</span><span>Generating...</span>`;
+                    exportBtn.classList.add("opacity-70", "cursor-not-allowed");
+
+                    try {
+                        const res = await fetch("/api/export-naker");
+                        if (!res.ok) throw new Error("Export failed");
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `data_karyawan_${new Date().getTime()}.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        exportBtn.innerHTML = `<span class="material-symbols-outlined text-sm">check_circle</span><span>Exported!</span>`;
+                        exportBtn.classList.replace(
+                            "bg-primary",
+                            "bg-emerald-500",
+                        );
+                        setTimeout(() => {
+                            exportBtn.disabled = false;
+                            exportBtn.innerHTML = originalContent;
+                            exportBtn.classList.remove(
+                                "opacity-70",
+                                "cursor-not-allowed",
+                            );
+                            exportBtn.classList.replace(
+                                "bg-emerald-500",
+                                "bg-primary",
+                            );
+                        }, 3000);
+                    } catch (err) {
+                        exportBtn.innerHTML = `<span class="material-symbols-outlined text-sm">error</span><span>Failed</span>`;
+                        exportBtn.classList.replace("bg-primary", "bg-error");
+                        setTimeout(() => {
+                            exportBtn.disabled = false;
+                            exportBtn.innerHTML = originalContent;
+                            exportBtn.classList.remove(
+                                "opacity-70",
+                                "cursor-not-allowed",
+                            );
+                            exportBtn.classList.replace(
+                                "bg-error",
+                                "bg-primary",
+                            );
+                        }, 3000);
+                    }
+                };
+            }
+        });
+    </script>
+</Layout>

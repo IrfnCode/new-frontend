@@ -1,0 +1,324 @@
+---
+// Miniapp: STATUS GANTI ODP — list & perbaiki return
+---
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <title>Status Ganti ODP</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <style is:global>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100dvh; }
+        .header { background: #0040a1; color: white; padding: 16px 20px; }
+        .header h1 { font-size: 16px; font-weight: 800; }
+        .header p { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+        .body { padding: 16px; max-width: 480px; margin: 0 auto; padding-bottom: 32px; }
+        .card { background: white; border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .card-title { font-size: 14px; font-weight: 800; color: #0040a1; }
+        .card-sub { font-size: 11px; color: #888; margin-top: 2px; }
+        .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+        .status-PENDING { background: #fff3e0; color: #e65100; }
+        .status-QC1_APPROVED { background: #e3f2fd; color: #1565c0; }
+        .status-QC1_RETURNED { background: #fce4ec; color: #c62828; }
+        .status-QC2_APPROVED { background: #e8f5e9; color: #2e7d32; }
+        .status-QC2_RETURNED { background: #fce4ec; color: #c62828; }
+        .status-DONE { background: #e8f5e9; color: #1b5e20; }
+        .info-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+        .info-chip { background: #f5f5f5; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; }
+        .return-alert { background: #fce4ec; border: 1.5px solid #ef9a9a; border-radius: 12px; padding: 12px; margin-top: 10px; }
+        .return-alert-title { font-size: 12px; font-weight: 800; color: #c62828; margin-bottom: 6px; }
+        .return-field-list { font-size: 11px; color: #555; }
+        .return-field-list li { margin-bottom: 3px; }
+        .fix-btn { width: 100%; margin-top: 10px; padding: 12px; background: #c62828; color: white; border: none; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .empty { text-align: center; padding: 48px 24px; color: #aaa; }
+        .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        .loading { text-align: center; padding: 48px; color: #888; }
+        /* Fix modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: flex-end; }
+        .modal-sheet { background: white; border-radius: 20px 20px 0 0; padding: 20px; width: 100%; max-height: 90dvh; overflow-y: auto; }
+        .modal-title { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
+        .modal-sub { font-size: 12px; color: #888; margin-bottom: 16px; }
+        .field { margin-bottom: 12px; }
+        .field label { display: block; font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+        .field input, .field textarea { width: 100%; padding: 12px; border: 1.5px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-weight: 600; }
+        .photo-upload { border: 2px dashed #e0e0e0; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; }
+        .photo-upload input { display: none; }
+        .photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .photo-preview img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+        .save-btn { width: 100%; padding: 14px; background: #0040a1; color: white; border: none; border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; margin-top: 8px; }
+        .cancel-btn { width: 100%; padding: 12px; background: #f5f5f5; color: #666; border: none; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+        .hidden { display: none !important; }
+        .spinner { width: 32px; height: 32px; border: 3px solid #e0e0e0; border-top-color: #0040a1; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 8px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📋 Status Ganti ODP</h1>
+        <p>Riwayat dan status QC pengajuan ganti ODP <span id="debugId" style="opacity:0.5;font-size:9px"></span></p>
+    </div>
+
+    <div class="body">
+        <div id="loadingState" class="loading">
+            <div class="spinner"></div>
+            <p>Memuat data...</p>
+        </div>
+        <div id="emptyState" class="empty hidden">
+            <div class="empty-icon">📭</div>
+            <p style="font-weight:700">Belum ada data</p>
+            <p style="font-size:12px;margin-top:4px">Belum ada pengajuan ganti ODP</p>
+        </div>
+        <div id="listContainer"></div>
+    </div>
+
+    <!-- Fix Modal -->
+    <div class="modal-overlay hidden" id="fixModal">
+        <div class="modal-sheet" id="fixModalContent">
+            <div class="modal-title">🔧 Perbaiki Data Return</div>
+            <div class="modal-sub" id="fixModalSub">Perbaiki field yang di-return oleh QC</div>
+            <div id="fixFields"></div>
+            <button class="save-btn" onclick="submitFix()">Kirim Perbaikan</button>
+            <button class="cancel-btn" onclick="closeFixModal()">Batal</button>
+        </div>
+    </div>
+
+<script is:inline>
+    let tg = window.Telegram?.WebApp;
+    let currentUserId = '';
+    let currentFixId = null;
+    let currentReturnFields = [];
+    const fixPhotoFiles = {};
+
+    const FIELD_LABELS = {
+        barcode_odp: 'Barcode ODP',
+        evident_label_odp: 'Evident Label ODP',
+        evident_setelah_1: 'Foto Setelah 1',
+        evident_setelah_2: 'Foto Setelah 2',
+        barcode_ps18_1: 'Barcode PS 1:8 #1',
+        barcode_ps18_2: 'Barcode PS 1:8 #2',
+        foto_clam_1: 'Foto Clam Cooker 1',
+        foto_clam_2: 'Foto Clam Cooker 2',
+        foto_odp_rise: 'Foto ODP Rise',
+        evident_sebelum_1: 'Evident Sebelum 1',
+        evident_sebelum_2: 'Evident Sebelum 2',
+        foto_ps18_1: 'Foto PS 1:8 #1', foto_ps18_2: 'Foto PS 1:8 #2',
+        foto_ps18_3: 'Foto PS 1:8 #3', foto_ps18_4: 'Foto PS 1:8 #4',
+        foto_ps18_5: 'Foto PS 1:8 #5', foto_ps18_6: 'Foto PS 1:8 #6',
+        foto_ps18_7: 'Foto PS 1:8 #7', foto_ps18_8: 'Foto PS 1:8 #8',
+        catatan: 'Catatan',
+    };
+
+    const STATUS_LABELS = {
+        PENDING: 'Menunggu QC 1',
+        QC1_APPROVED: 'QC 1 Disetujui',
+        QC1_RETURNED: 'QC 1 Return',
+        QC2_APPROVED: 'QC 2 Disetujui',
+        QC2_RETURNED: 'QC 2 Return',
+        DONE: 'Selesai ✅',
+    };
+
+    if (tg) {
+        tg.ready();
+        tg.expand();
+        const user = tg.initDataUnsafe?.user;
+        if (user?.id) currentUserId = String(user.id);
+        if (!currentUserId && tg.initData) {
+            try {
+                const p = new URLSearchParams(tg.initData);
+                const u = p.get('user');
+                if (u) currentUserId = String(JSON.parse(decodeURIComponent(u))?.id || '');
+            } catch(_) {}
+        }
+    }
+    
+    if (!currentUserId) {
+        currentUserId = new URLSearchParams(window.location.search).get('uid') || '';
+    }
+
+    document.getElementById('debugId').textContent = `(ID: ${currentUserId || 'Unknown'})`;
+
+    async function loadData() {
+        if (!currentUserId) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+            return;
+        }
+        try {
+            const res = await fetch(`/api/ganti-odp?user_id=${currentUserId}`);
+            const result = await res.json();
+            document.getElementById('loadingState').classList.add('hidden');
+
+            const data = result.data || [];
+            if (!data.length) {
+                document.getElementById('emptyState').classList.remove('hidden');
+                return;
+            }
+
+            document.getElementById('listContainer').innerHTML = data.map(item => {
+                const isReturned = item.status === 'QC1_RETURNED' || item.status === 'QC2_RETURNED';
+                const returnFields = item.returned_fields
+                    ? (typeof item.returned_fields === 'string' ? JSON.parse(item.returned_fields) : item.returned_fields)
+                    : [];
+                const qcNotes = item.qc1_notes || item.qc2_notes || '';
+
+                let fDate = '';
+                try {
+                    if (item.tanggal) {
+                        const d = new Date(item.tanggal);
+                        if (!isNaN(d.getTime())) {
+                            fDate = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Asia/Jakarta' });
+                        } else {
+                            fDate = item.tanggal;
+                        }
+                    }
+                    if (item.created_at) {
+                        const t = new Date(item.created_at);
+                        if (!isNaN(t.getTime())) {
+                            const timeStr = t.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' }).replace(/\./g, ':');
+                            fDate += ` ${timeStr} WIB`;
+                        }
+                    }
+                } catch(e) {
+                    fDate = item.tanggal;
+                }
+
+                return `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">${item.no_tiket}</div>
+                            <div class="card-sub">${item.datek_odp} • ${fDate}</div>
+                        </div>
+                        <span class="status-badge status-${item.status}">${STATUS_LABELS[item.status] || item.status}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-chip">📍 ${item.lokasi?.substring(0,30) || '-'}</span>
+                        <span class="info-chip">🔢 PS 1:8 × ${item.ps_count || item.ps18_count || 1}</span>
+                    </div>
+                    ${isReturned ? `
+                    <div class="return-alert">
+                        <div class="return-alert-title">⚠️ Data perlu diperbaiki:</div>
+                        <ul class="return-field-list">
+                            ${returnFields.map(f => `<li>• ${FIELD_LABELS[f] || f}</li>`).join('')}
+                        </ul>
+                        ${qcNotes ? `<p style="font-size:11px;color:#555;margin-top:6px">📝 ${qcNotes}</p>` : ''}
+                        <button class="fix-btn" onclick="openFixModal(${item.id}, ${JSON.stringify(returnFields).replace(/"/g,'&quot;')})">
+                            🔧 Perbaiki Sekarang
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>`;
+            }).join('');
+        } catch (err) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('listContainer').innerHTML = `<div class="empty"><p>Gagal memuat: ${err.message}</p></div>`;
+        }
+    }
+
+    function openFixModal(id, returnFields) {
+        currentFixId = id;
+        currentReturnFields = returnFields;
+        Object.keys(fixPhotoFiles).forEach(k => delete fixPhotoFiles[k]);
+
+        const container = document.getElementById('fixFields');
+        container.innerHTML = returnFields.map(field => {
+            const label = FIELD_LABELS[field] || field;
+            // Foto: semua field yang bukan teks
+            const isText = ['barcode_odp','barcode_ps1','barcode_ps2','barcode_ps18_1','barcode_ps18_2','catatan'].includes(field);
+
+            if (!isText) {
+                // Foto slot — klik untuk pilih foto
+                return `
+                <div class="field">
+                    <label>📷 ${label}</label>
+                    <div class="photo-upload" id="slot_${field}" onclick="pickFixPhoto('${field}')"
+                         style="cursor:pointer;position:relative;overflow:hidden;min-height:100px;display:flex;align-items:center;justify-content:center">
+                        <p id="slot_lbl_${field}" style="font-size:12px;color:#888;text-align:center">Ketuk untuk pilih foto baru</p>
+                        <img id="slot_img_${field}" src="" style="display:none;width:100%;height:160px;object-fit:cover;border-radius:10px" />
+                    </div>
+                </div>`;
+            }
+            // Teks
+            const isTextarea = field === 'catatan';
+            return `
+            <div class="field">
+                <label>${label}</label>
+                ${isTextarea
+                    ? `<textarea id="fix_${field}" placeholder="Isi ${label}..."></textarea>`
+                    : `<input type="text" id="fix_${field}" placeholder="Isi ${label}..." />`
+                }
+            </div>`;
+        }).join('');
+
+        document.getElementById('fixModal').classList.remove('hidden');
+    }
+
+    function pickFixPhoto(field) {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = 'image/*';
+        inp.style.display = 'none';
+        inp.onchange = (e) => {
+            const f = e.target.files[0];
+            if (!f) return;
+            fixPhotoFiles[field] = f;
+            const img = document.getElementById('slot_img_' + field);
+            const lbl = document.getElementById('slot_lbl_' + field);
+            if (img) { img.src = URL.createObjectURL(f); img.style.display = 'block'; }
+            if (lbl) lbl.style.display = 'none';
+            document.body.removeChild(inp);
+        };
+        document.body.appendChild(inp);
+        inp.click();
+    }
+
+    function closeFixModal() {
+        document.getElementById('fixModal').classList.add('hidden');
+        currentFixId = null;
+    }
+
+    async function submitFix() {
+        if (!currentFixId) return;
+
+        const textFields = {};
+        const photoPromises = [];
+
+        for (const field of currentReturnFields) {
+            const isText = ['barcode_odp','barcode_ps1','barcode_ps2','barcode_ps18_1','barcode_ps18_2','catatan'].includes(field);
+
+            if (isText) {
+                const val = document.getElementById('fix_' + field)?.value?.trim();
+                if (val) textFields[field] = val;
+            } else if (fixPhotoFiles[field]) {
+                // Upload foto yang diperbaiki
+                const fd = new FormData();
+                fd.append('action', 'update_photo');
+                fd.append('odp_id', String(currentFixId));
+                fd.append('field_name', field);
+                fd.append('file', fixPhotoFiles[field]);
+                photoPromises.push(fetch('/api/ganti-odp', { method: 'POST', body: fd }));
+            }
+        }
+
+        try {
+            await Promise.all(photoPromises);
+            await fetch('/api/ganti-odp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'update_return', id: currentFixId, fields: textFields })
+            });
+            closeFixModal();
+            alert('✅ Perbaikan berhasil dikirim! Menunggu QC ulang.');
+            loadData();
+        } catch (err) {
+            alert('Gagal: ' + err.message);
+        }
+    }
+
+    loadData();
+</script>
+</body>
+</html>

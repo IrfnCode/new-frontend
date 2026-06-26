@@ -1,0 +1,433 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/login");
+}
+
+const isAdmin   = role === "ADMIN";
+const isQC1     = ["KORLAP", "HD KORLAP"].includes(role);
+const isQC2     = ["ADMIN", "HSA"].includes(role);
+const qcLevel   = isQC2 ? 2 : 1;
+---
+
+<Layout title="MORENA Admin - QC Ganti ODP">
+    <meta name="current-user" content={username} />
+    <meta name="qc-level" content={String(qcLevel)} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="data-ganti-odp" />
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary text-2xl">swap_horiz</span>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-primary font-headline" id="headerTitle">Data Ganti ODP [Detail/QC]</h2>
+                        <button onclick="window.location.href='/admin/data-ganti-odp'" class="text-xs font-bold text-on-surface-variant hover:text-primary flex items-center gap-1 mt-1 transition-colors">
+                            <span class="material-symbols-outlined text-[14px]">arrow_back</span> Back to list
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Tabs -->
+            <div class="px-8 mt-6">
+                <div class="flex gap-4 border-b border-border-color">
+                    <button onclick="switchTab('detail')" id="tab-detail" class="px-6 py-3 text-sm font-bold border-b-2 border-primary text-primary transition-colors uppercase tracking-widest">Detail & Material</button>
+                    <button onclick="switchTab('foto')" id="tab-foto" class="px-6 py-3 text-sm font-bold border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-colors uppercase tracking-widest">Foto Eviden</button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="p-8 flex-1 pb-32">
+                <!-- Loading State -->
+                <div id="loadingState" class="text-center py-12">
+                    <div class="w-10 h-10 border-4 border-surface-container-highest border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                    <p class="text-on-surface-variant font-bold">Memuat data...</p>
+                </div>
+
+                <!-- Error State -->
+                <div id="errorState" class="hidden text-center py-12">
+                    <span class="material-symbols-outlined text-4xl text-error mb-2">error</span>
+                    <p class="text-error font-bold" id="errorMsg">Data tidak ditemukan</p>
+                </div>
+
+                <!-- Detail Tab -->
+                <div id="content-detail" class="hidden">
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-6 mb-6">
+                        <h3 class="text-base font-black text-primary mb-4 uppercase tracking-widest border-b border-border-color pb-2">Data Utama</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6" id="detailGrid">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-6">
+                        <h3 class="text-base font-black text-primary mb-4 uppercase tracking-widest border-b border-border-color pb-2">Material / Keterangan</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-6" id="materialGrid">
+                            <!-- Populated via JS -->
+                        </div>
+                        <div class="mt-6" id="catatanBox"></div>
+                    </div>
+                </div>
+
+                <!-- Foto Eviden Tab -->
+                <div id="content-foto" class="hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="fotoGrid">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- QC Footer (Sticky) -->
+            <div id="qcFooter" class="fixed bottom-0 left-[256px] right-0 bg-surface border-t border-border-color p-4 flex gap-4 items-end z-30 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] hidden">
+                <div class="flex-1">
+                    <p class="text-[10px] font-black uppercase text-on-surface-variant mb-1">General Notes QC <span id="qcFooterLevel" class="text-primary"></span></p>
+                    <textarea id="generalNotes" rows="1" class="w-full px-4 py-3 bg-surface-container-lowest rounded-xl border border-border-color text-sm resize-none focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="Catatan umum (opsional)..."></textarea>
+                </div>
+                <button onclick="submitQC()" class="px-8 py-3 bg-primary text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20 shrink-0 h-[46px]">
+                    <span class="material-symbols-outlined text-[18px]">send</span> Submit QC
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="fixed inset-0 bg-black/90 z-[200] hidden flex items-center justify-center p-4" onclick="closeLightbox()">
+        <button onclick="closeLightbox()" class="absolute top-4 right-4 text-white bg-white/20 hover:bg-white/30 rounded-full w-10 h-10 flex items-center justify-center text-xl font-bold z-10">×</button>
+        <img id="lightboxImg" src="" class="max-w-full max-h-[90dvh] object-contain rounded-xl shadow-2xl" onclick="event.stopPropagation()" />
+    </div>
+</Layout>
+
+<script is:inline>
+    const CURRENT_USER = document.querySelector('meta[name="current-user"]')?.content || 'Admin';
+    const QC_LEVEL = parseInt(document.querySelector('meta[name="qc-level"]')?.content || '1');
+
+    const FIELD_LABELS = {
+        barcode_odp: 'Barcode ODP', 
+        evident_barcode_odp: 'Evident Barcode ODP', 
+        evident_label_odp: 'Evident Label ODP',
+        evident_setelah_1: 'Evident Setelah (Dekat)', 
+        evident_setelah_2: 'Evident Setelah (Jauh / Rise Pipe)',
+        barcode_ps18_1: 'Barcode PS 1:8 #1', barcode_ps18_2: 'Barcode PS 1:8 #2',
+        foto_clam_1: 'Foto Clam Cooker 1', foto_clam_2: 'Foto Clam Cooker 2',
+        foto_uc: 'Foto UC', foto_kabel_adss_5m: 'Foto Kabel ADSS 5M',
+        foto_odp_rise: 'Foto ODP Rise',
+        evident_sebelum_1: 'Evident Sebelum (ODP)', 
+        evident_sebelum_2: 'Evident Sebelum (Redaman)'
+    };
+
+    function formatWIB(dateStr) {
+        if (!dateStr) return '-';
+        let d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        let wibMs = d.getTime() + (d.getTimezoneOffset() * 60000) + (7 * 3600000);
+        let w = new Date(wibMs);
+        let pad = (n) => String(n).padStart(2,'0');
+        return `${w.getFullYear()}-${pad(w.getMonth()+1)}-${pad(w.getDate())} ${pad(w.getHours())}:${pad(w.getMinutes())}:${pad(w.getSeconds())} WIB`;
+    }
+
+    function getLabel(k) {
+        let lbl = FIELD_LABELS[k] || k;
+        if (k.startsWith('sesudah_')) lbl = 'Evident Sesudah ' + k.split('_')[1];
+        if (k.startsWith('foto_ps18_')) lbl = 'Foto Barcode PS 1:8 #' + k.split('_')[2];
+        return lbl.toUpperCase();
+    }
+
+    let recordData = null;
+    let activeQcLevel = null;
+    let isQCMode = false;
+    let currentId = new URLSearchParams(window.location.search).get('id');
+
+    function switchTab(tab) {
+        document.getElementById('tab-detail').className = 'px-6 py-3 text-sm font-bold border-b-2 text-on-surface-variant hover:text-primary border-transparent transition-colors uppercase tracking-widest';
+        document.getElementById('tab-foto').className = 'px-6 py-3 text-sm font-bold border-b-2 text-on-surface-variant hover:text-primary border-transparent transition-colors uppercase tracking-widest';
+        
+        document.getElementById(`tab-${tab}`).className = 'px-6 py-3 text-sm font-bold border-b-2 border-primary text-primary transition-colors uppercase tracking-widest';
+        
+        document.getElementById('content-detail').classList.add('hidden');
+        document.getElementById('content-foto').classList.add('hidden');
+        document.getElementById(`content-${tab}`).classList.remove('hidden');
+    }
+
+    // Helper to extract previous return notes from qc1_notes or qc2_notes
+    function getHistoryNotes(fieldKey) {
+        const lbl = getLabel(fieldKey);
+        let notesArr = [];
+        
+        const parseNotes = (rawNotes, levelPrefix) => {
+            if (!rawNotes) return;
+            const lines = rawNotes.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].includes(lbl + ':') || lines[i].includes(lbl + ' (Sesuai dengan catatan):')) {
+                    notesArr.push(`[${levelPrefix}] ` + lines[i]);
+                }
+            }
+        };
+
+        parseNotes(recordData.qc1_notes, 'QC1');
+        parseNotes(recordData.qc2_notes, 'QC2');
+        
+        return notesArr.join('\n');
+    }
+
+    async function loadDetail() {
+        if (!currentId) {
+            window.location.href = '/admin/data-ganti-odp';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/ganti-odp?id=' + currentId);
+            const result = await res.json();
+            
+            document.getElementById('loadingState').classList.add('hidden');
+
+            if (result.status !== 'success' || !result.data) {
+                document.getElementById('errorState').classList.remove('hidden');
+                document.getElementById('errorMsg').textContent = result.message || 'Data tidak ditemukan';
+                return;
+            }
+
+            recordData = result.data;
+            document.getElementById('headerTitle').textContent = `Data Ganti ODP — ${recordData.no_tiket}`;
+
+            // Determine QC Mode
+            const canActQC1 = recordData.status === 'PENDING' || recordData.status === 'QC1_RETURNED';
+            const canActQC2 = recordData.status === 'QC1_APPROVED' || recordData.status === 'QC2_RETURNED';
+            
+            if (QC_LEVEL === 1 && canActQC1) activeQcLevel = 1;
+            else if (QC_LEVEL === 2 && canActQC2) activeQcLevel = 2;
+            else if (QC_LEVEL === 2 && canActQC1) activeQcLevel = 1;
+            else activeQcLevel = null;
+
+            isQCMode = activeQcLevel !== null;
+
+            renderDetailTab();
+            renderFotoTab();
+
+            if (isQCMode) {
+                document.getElementById('qcFooter').classList.remove('hidden');
+                document.getElementById('qcFooterLevel').textContent = `(QC ${activeQcLevel})`;
+            }
+
+            // Default switch to Detail
+            switchTab('detail');
+
+        } catch (e) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMsg').textContent = e.message;
+        }
+    }
+
+    function renderDetailTab() {
+        const d = recordData;
+        const mainData = [
+            ['No Tiket', d.no_tiket], ['Teknisi', d.nama_teknisi],
+            ['NIK Teknisi', d.nik_teknisi || '-'], ['Tanggal', formatWIB(d.tanggal)],
+            ['Lokasi', d.lokasi], ['Datek ODP', d.datek_odp],
+            ['Datek ODC', d.datek_odc], ['Barcode ODP', d.barcode_odp]
+        ];
+        
+        const matData = [
+            ['PS 1:8', (d.ps_count || d.ps18_count || 1) + 'x'],
+            ['Barcode PS #1', d.barcode_ps1 || d.barcode_ps18_1 || '-'], 
+            ['Barcode PS #2', d.barcode_ps2 || d.barcode_ps18_2 || '-'],
+            ['ODP Solid', d.material_odp_solid], 
+            ['Clam Cooker', d.material_clam_cooker],
+            ['Material UC', d.material_uc],
+            ['Kabel ADSS 5M', d.material_kabel_adss_5m],
+            ['ODP Rise', d.odp_rise_count]
+        ];
+
+        const makeGrid = (items) => items.map(([l,v]) => `
+            <div>
+                <p class="text-[10px] font-black uppercase text-on-surface-variant mb-1">${l}</p>
+                <p class="text-sm font-bold text-on-surface">${v || '-'}</p>
+            </div>
+        `).join('');
+
+        document.getElementById('detailGrid').innerHTML = makeGrid(mainData);
+        document.getElementById('materialGrid').innerHTML = makeGrid(matData);
+        
+        if (d.catatan) {
+            document.getElementById('catatanBox').innerHTML = `
+                <p class="text-[10px] font-black uppercase text-on-surface-variant mb-1">Catatan Teknisi</p>
+                <p class="text-sm font-medium text-on-surface bg-surface p-3 rounded-xl border border-border-color">${d.catatan}</p>
+            `;
+        }
+    }
+
+    function renderFotoTab() {
+        const photos = recordData.photos || {};
+        
+        const expectedKeys = [
+            'evident_barcode_odp',
+            'evident_label_odp',
+            'evident_setelah_1',
+            'evident_setelah_2'
+        ];
+        for(let i=1; i<=8; i++) expectedKeys.push('foto_ps18_' + i);
+        expectedKeys.push('foto_clam_1', 'foto_clam_2', 'foto_uc', 'foto_kabel_adss_5m', 'foto_odp_rise', 'evident_sebelum_1', 'evident_sebelum_2');
+        for(let i=1; i<=72; i++) expectedKeys.push('sesudah_' + i);
+
+        const allPhotoKeys = Object.keys(photos);
+        const extraKeys = allPhotoKeys.filter(k => !expectedKeys.includes(k)).sort();
+        const keysToRender = [...expectedKeys, ...extraKeys].filter(k => allPhotoKeys.includes(k));
+
+        const html = keysToRender.map(k => {
+            const list = photos[k] || [];
+            if (!list.length) return '';
+            
+            let imgUrl = list[0].file_url;
+            if (imgUrl.includes('/uploads/ganti-odp/')) {
+                const filename = imgUrl.split('/').pop();
+                imgUrl = '/api/image?path=ganti-odp/' + encodeURIComponent(filename);
+            }
+
+            const historyNotes = getHistoryNotes(k);
+            const historyHtml = historyNotes ? `
+                <div class="mt-4">
+                    <p class="text-[10px] font-black uppercase text-amber-600 mb-1">History Return Keterangan</p>
+                    <textarea readonly class="w-full bg-amber-500/10 rounded-xl p-3 text-xs border border-amber-500/20 text-amber-700 font-medium resize-none outline-none" rows="2">${historyNotes}</textarea>
+                </div>
+            ` : '';
+
+            const qcControls = isQCMode ? `
+                <div class="mt-4 pt-4 border-t border-border-color space-y-3">
+                    <select class="w-full bg-surface-container-high rounded-xl px-3 py-2 text-sm border border-border-color font-bold text-on-surface outline-none">
+                        <option>Uji Petik</option>
+                    </select>
+                    
+                    <div class="space-y-2 bg-surface p-3 rounded-xl border border-border-color">
+                        <label class="flex items-center gap-3 cursor-pointer hover:bg-surface-container-high p-1.5 rounded-lg transition-colors">
+                            <input type="radio" name="qc_${k}" value="sesuai" class="w-4 h-4 accent-emerald-500" checked onchange="toggleCatatan('${k}')" />
+                            <span class="text-xs font-bold text-on-surface">Sesuai</span>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer hover:bg-surface-container-high p-1.5 rounded-lg transition-colors">
+                            <input type="radio" name="qc_${k}" value="sesuai_catatan" class="w-4 h-4 accent-amber-500" onchange="toggleCatatan('${k}')" />
+                            <span class="text-xs font-bold text-on-surface">Sesuai Catatan</span>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer hover:bg-surface-container-high p-1.5 rounded-lg transition-colors">
+                            <input type="radio" name="qc_${k}" value="tidak_sesuai" class="w-4 h-4 accent-error" onchange="toggleCatatan('${k}')" />
+                            <span class="text-xs font-black text-error">Tidak Sesuai</span>
+                        </label>
+                    </div>
+                    
+                    <div id="catatan_container_${k}" class="hidden mt-2 transition-all">
+                        <textarea id="catatan_${k}" class="w-full bg-surface-container-lowest border border-border-color rounded-xl p-3 text-xs resize-none focus:border-primary focus:ring-1 focus:ring-primary outline-none" rows="3" placeholder="Tuliskan catatan atau alasan kenapa tidak sesuai..."></textarea>
+                    </div>
+                </div>
+            ` : '';
+
+            return `
+            <div class="bg-surface-container-lowest border border-border-color rounded-2xl overflow-hidden flex flex-col shadow-sm">
+                <!-- Image Header -->
+                <div class="relative bg-surface-container-high aspect-square w-full group cursor-pointer" onclick="openLightbox('${imgUrl}')">
+                    <img src="${imgUrl}" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+                    <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-3xl">zoom_in</span>
+                    </div>
+                </div>
+                
+                <!-- Card Body -->
+                <div class="p-4 flex-1 flex flex-col">
+                    <h4 class="font-black text-sm text-primary mb-3">${getLabel(k)}</h4>
+                    
+                    <div class="text-[11px] text-on-surface-variant space-y-1">
+                        <p class="flex justify-between border-b border-border-color pb-1"><span>Koordinat:</span> <span class="font-mono font-bold text-on-surface truncate ml-2 max-w-[120px]">${list[0].koordinat || '0.000000, 0.000000'}</span></p>
+                        <p class="flex justify-between pt-1"><span>Waktu:</span> <span class="font-mono font-bold text-on-surface truncate ml-2 max-w-[140px]">${formatWIB(list[0].created_at || recordData.tanggal)}</span></p>
+                    </div>
+                    
+                    <div class="flex flex-wrap gap-2 mt-3 mb-2">
+                        <a href="#" class="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold bg-primary/10 px-2 py-1 rounded-md"><span class="material-symbols-outlined text-[12px]">info</span> Template</a>
+                        <a href="#" class="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold bg-primary/10 px-2 py-1 rounded-md"><span class="material-symbols-outlined text-[12px]">history</span> History</a>
+                    </div>
+                    
+                    ${historyHtml}
+                    ${qcControls}
+                </div>
+            </div>
+            `;
+        }).join('');
+
+        document.getElementById('fotoGrid').innerHTML = html;
+    }
+
+    function toggleCatatan(k) {
+        const val = document.querySelector(`input[name="qc_${k}"]:checked`).value;
+        const container = document.getElementById('catatan_container_' + k);
+        if (val === 'tidak_sesuai' || val === 'sesuai_catatan') {
+            container.classList.remove('hidden');
+        } else {
+            container.classList.add('hidden');
+        }
+    }
+
+    async function submitQC() {
+        if (!currentId || !activeQcLevel) return;
+
+        const returnFields = [];
+        const notesArr = [];
+        
+        document.querySelectorAll('input[type="radio"]:checked').forEach(radio => {
+            const fieldName = radio.name.replace('qc_', '');
+            const val = radio.value;
+            if (val === 'tidak_sesuai') {
+                returnFields.push(fieldName);
+                const catatan = document.getElementById('catatan_' + fieldName).value.trim();
+                if (catatan) {
+                    notesArr.push(`${getLabel(fieldName)}: ${catatan}`);
+                }
+            } else if (val === 'sesuai_catatan') {
+                const catatan = document.getElementById('catatan_' + fieldName).value.trim();
+                if (catatan) {
+                    notesArr.push(`${getLabel(fieldName)} (Sesuai dengan catatan): ${catatan}`);
+                }
+            }
+        });
+
+        const action = returnFields.length > 0 ? 'return' : 'approve';
+        const generalNotes = document.getElementById('generalNotes').value.trim();
+        if (generalNotes) notesArr.unshift(`General: ${generalNotes}`);
+
+        const finalNotes = notesArr.join('\n\n');
+
+        const res = await fetch('/api/ganti-odp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: action === 'approve' ? 'qc_approve' : 'qc_return',
+                id: currentId,
+                qc_level: activeQcLevel,
+                by: CURRENT_USER,
+                notes: finalNotes,
+                return_fields: returnFields
+            })
+        });
+        const result = await res.json();
+        if (result.status === 'success') {
+            alert(`✅ ${action === 'approve' ? 'Approved' : 'Returned'} berhasil!`);
+            window.location.href = '/admin/data-ganti-odp';
+        } else {
+            alert('Gagal: ' + result.message);
+        }
+    }
+
+    function openLightbox(url) {
+        const lb = document.getElementById('lightbox');
+        document.getElementById('lightboxImg').src = url;
+        lb.classList.remove('hidden');
+    }
+    
+    function closeLightbox() {
+        document.getElementById('lightbox').classList.add('hidden');
+        document.getElementById('lightboxImg').src = '';
+    }
+
+    // Initialize
+    loadDetail();
+</script>

@@ -1,0 +1,284 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/login");
+}
+
+const isAdmin   = role === "ADMIN";
+const isQC1     = ["KORLAP", "HD KORLAP"].includes(role);
+const isQC2     = ["ADMIN", "HSA"].includes(role);
+const canQC     = isQC1 || isQC2;
+const qcLevel   = isQC2 ? 2 : 1;
+---
+
+<Layout title="MORENA Admin - Data Ganti ODP">
+    <meta name="current-user" content={username} />
+    <meta name="qc-level" content={String(qcLevel)} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="data-ganti-odp" />
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary text-2xl">swap_horiz</span>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-primary font-headline">Data Ganti ODP</h2>
+                        <p class="text-xs text-on-surface-variant">QC {qcLevel} — {username}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <input type="date" id="dateFrom" class="bg-surface-container-high border border-border-color rounded-xl px-3 py-2 text-sm font-bold" />
+                    <span class="text-on-surface-variant text-sm">—</span>
+                    <input type="date" id="dateTo" class="bg-surface-container-high border border-border-color rounded-xl px-3 py-2 text-sm font-bold" />
+                    <select id="statusFilter" class="bg-surface-container-high border border-border-color rounded-xl px-3 py-2 text-sm font-bold">
+                        <option value="">Semua Status</option>
+                        <option value="PENDING">Pending qc</option>
+                        <option value="QC1_APPROVED">sedang qc2</option>
+                        <option value="QC1_RETURNED">Return QC1</option>
+                        <option value="QC2_RETURNED">Return QC2</option>
+                        <option value="DONE">Selesai</option>
+                    </select>
+                    <button onclick="deleteSelected()" id="btnDeleteSelected" class="hidden items-center gap-2 px-4 py-2 bg-error text-white rounded-xl text-sm font-bold">
+                        <span class="material-symbols-outlined text-[18px]">delete</span> Hapus Terpilih (<span id="deleteCount">0</span>)
+                    </button>
+                    <button onclick="loadData()" class="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold">
+                        <span class="material-symbols-outlined text-[18px]">refresh</span> Refresh
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8">
+                <!-- Stats -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                    {[
+                        { id: 'statTotal',    label: 'Total',         color: 'text-primary' },
+                        { id: 'statPending',  label: 'Pending QC',    color: 'text-amber-500' },
+                        { id: 'statReturned', label: 'Returned',      color: 'text-error' },
+                        { id: 'statApproved', label: 'QC Approved',   color: 'text-blue-500' },
+                        { id: 'statDone',     label: 'Done',          color: 'text-emerald-500' },
+                    ].map(s => (
+                        <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-5">
+                            <p class="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest">{s.label}</p>
+                            <p id={s.id} class={`text-3xl font-black font-headline ${s.color} mt-1`}>-</p>
+                        </div>
+                    ))}
+                </div>
+
+                <!-- Table -->
+                <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-surface-container-low text-xs uppercase font-black text-on-surface-variant">
+                                <tr>
+                                    <th class="px-4 py-3 w-12 text-center"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" class="w-4 h-4 rounded border-border-color cursor-pointer text-primary"></th>
+                                    <th class="px-4 py-3 text-left">No Tiket</th>
+                                    <th class="px-4 py-3 text-left">Teknisi</th>
+                                    <th class="px-4 py-3 text-left">ODP</th>
+                                    <th class="px-4 py-3 text-left">Tanggal</th>
+                                    <th class="px-4 py-3 text-left">Status</th>
+                                    <th class="px-4 py-3 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-border-color">
+                                <tr><td colspan="7" class="px-4 py-12 text-center text-on-surface-variant">Memuat data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="fixed inset-0 bg-black/90 z-[200] hidden flex items-center justify-center p-4" onclick="closeLightbox()">
+        <button onclick="closeLightbox()" class="absolute top-4 right-4 text-white bg-white/20 hover:bg-white/30 rounded-full w-10 h-10 flex items-center justify-center text-xl font-bold z-10">×</button>
+        <img id="lightboxImg" src="" class="max-w-full max-h-[90dvh] object-contain rounded-xl shadow-2xl" onclick="event.stopPropagation()" />
+    </div>
+</Layout>
+
+<script is:inline>
+    const CURRENT_USER = document.querySelector('meta[name="current-user"]')?.content || 'Admin';
+    const QC_LEVEL = parseInt(document.querySelector('meta[name="qc-level"]')?.content || '1');
+
+    const STATUS_LABELS = {
+        PENDING: { label: 'Pending qc', cls: 'bg-amber-500/10 text-amber-600 border-amber-500/20' },
+        QC1_APPROVED: { label: 'sedang qc2', cls: 'bg-blue-500/10 text-blue-600 border-blue-500/20' },
+        QC1_RETURNED: { label: 'Return QC1', cls: 'bg-error/10 text-error border-error/20' },
+        QC2_APPROVED: { label: 'QC2 Approved', cls: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' },
+        QC2_RETURNED: { label: 'Return QC2', cls: 'bg-error/10 text-error border-error/20' },
+        DONE: { label: 'Selesai', cls: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' },
+    };
+
+    const FIELD_LABELS = {
+        barcode_odp: 'Barcode ODP', evident_barcode_odp: 'Evident Barcode ODP', evident_label_odp: 'Evident Label ODP',
+        evident_setelah_1: 'Foto Setelah 1', evident_setelah_2: 'Foto Setelah 2',
+        barcode_ps18_1: 'Barcode PS 1:8 #1', barcode_ps18_2: 'Barcode PS 1:8 #2',
+        foto_clam_1: 'Foto Clam 1', foto_clam_2: 'Foto Clam 2',
+        foto_odp_rise: 'Foto ODP Rise',
+        evident_sebelum_1: 'Evident Sebelum 1', evident_sebelum_2: 'Evident Sebelum 2',
+        foto_ps18_1: 'Foto PS 1:8 #1', foto_ps18_2: 'Foto PS 1:8 #2',
+        foto_ps18_3: 'Foto PS 1:8 #3', foto_ps18_4: 'Foto PS 1:8 #4',
+        foto_ps18_5: 'Foto PS 1:8 #5', foto_ps18_6: 'Foto PS 1:8 #6',
+        foto_ps18_7: 'Foto PS 1:8 #7', foto_ps18_8: 'Foto PS 1:8 #8',
+        catatan: 'Catatan',
+    };
+
+    function formatWIB(dateStr) {
+        if (!dateStr) return '-';
+        let d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        let wibMs = d.getTime() + (d.getTimezoneOffset() * 60000) + (7 * 3600000);
+        let w = new Date(wibMs);
+        let pad = (n) => String(n).padStart(2,'0');
+        return `${w.getFullYear()}-${pad(w.getMonth()+1)}-${pad(w.getDate())} ${pad(w.getHours())}:${pad(w.getMinutes())}:${pad(w.getSeconds())} WIB`;
+    }
+
+    function getLabel(k) {
+        let lbl = FIELD_LABELS[k] || k;
+        if (k.startsWith('sesudah_')) lbl = 'Evident Sesudah ' + k.split('_')[1];
+        if (k.startsWith('foto_ps18_')) lbl = 'Foto PS 1:8 #' + k.split('_')[2];
+        return lbl.toUpperCase();
+    }
+
+    let currentDetailId = null;
+    let allData = [];
+    let activeQcLevel = null; // level QC yang aktif untuk detail yang sedang dibuka
+
+    // Set default dates = today
+    const today = new Date().toLocaleDateString('en-CA');
+    document.getElementById('dateFrom').value = today;
+    document.getElementById('dateTo').value = today;
+
+    async function loadData() {
+        const df = document.getElementById('dateFrom').value;
+        const dt = document.getElementById('dateTo').value;
+        const st = document.getElementById('statusFilter').value;
+
+        const params = new URLSearchParams();
+        if (df) params.set('date_from', df);
+        if (dt) params.set('date_to', dt);
+        if (st) params.set('status', st);
+
+        const res = await fetch('/api/ganti-odp?' + params.toString());
+        const result = await res.json();
+        allData = result.data || [];
+
+        updateStats();
+        renderTable();
+    }
+
+    function updateStats() {
+        document.getElementById('statTotal').textContent = allData.length;
+        document.getElementById('statPending').textContent = allData.filter(d => d.status === 'PENDING').length;
+        document.getElementById('statReturned').textContent = allData.filter(d => d.status.includes('RETURNED')).length;
+        document.getElementById('statApproved').textContent = allData.filter(d => d.status.includes('APPROVED')).length;
+        document.getElementById('statDone').textContent = allData.filter(d => d.status === 'DONE').length;
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        if (!allData.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-12 text-center text-on-surface-variant font-bold">Tidak ada data</td></tr>';
+            return;
+        }
+        tbody.innerHTML = allData.map(d => {
+            const s = STATUS_LABELS[d.status] || { label: d.status, cls: 'bg-surface-container-highest text-on-surface-variant border-border-color' };
+            return `
+            <tr class="hover:bg-surface-container-low/50 transition-colors cursor-pointer" onclick="openDetail(${d.id})">
+                <td class="px-4 py-3 text-center" onclick="event.stopPropagation()">
+                    <input type="checkbox" class="row-checkbox w-4 h-4 rounded border-border-color cursor-pointer text-primary" value="${d.id}" onchange="updateDeleteBtn()">
+                </td>
+                <td class="px-4 py-3 font-mono font-bold text-primary text-xs">${d.no_tiket}</td>
+                <td class="px-4 py-3">
+                    <p class="font-bold text-sm">${d.nama_teknisi || '-'}</p>
+                    <p class="text-xs text-on-surface-variant">${d.nik_teknisi || ''}</p>
+                </td>
+                <td class="px-4 py-3 text-xs font-bold">${d.datek_odp}</td>
+                <td class="px-4 py-3 text-xs text-on-surface-variant">${formatWIB(d.tanggal)}</td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-black border ${s.cls}">${s.label}</span>
+                </td>
+                <td class="px-4 py-3 text-right">
+                    <button onclick="event.stopPropagation();openDetail(${d.id})" class="p-1.5 hover:bg-primary/10 text-primary rounded-lg">
+                        <span class="material-symbols-outlined text-[18px]">visibility</span>
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function toggleSelectAll() {
+        const isChecked = document.getElementById('selectAll').checked;
+        document.querySelectorAll('.row-checkbox').forEach(cb => {
+            cb.checked = isChecked;
+        });
+        updateDeleteBtn();
+    }
+
+    function updateDeleteBtn() {
+        const checked = document.querySelectorAll('.row-checkbox:checked').length;
+        const btn = document.getElementById('btnDeleteSelected');
+        const countSpan = document.getElementById('deleteCount');
+        
+        if (checked > 0) {
+            btn.classList.remove('hidden');
+            btn.classList.add('flex');
+            countSpan.textContent = checked;
+        } else {
+            btn.classList.add('hidden');
+            btn.classList.remove('flex');
+        }
+    }
+
+    async function deleteSelected() {
+        const checked = Array.from(document.querySelectorAll('.row-checkbox:checked')).map(cb => parseInt(cb.value));
+        if (checked.length === 0) return;
+        
+        if (!confirm(`Apakah Anda yakin ingin menghapus ${checked.length} data terpilih beserta fotonya secara permanen?`)) return;
+        
+        try {
+            const res = await fetch('/api/ganti-odp', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: checked })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+                alert('Berhasil menghapus data.');
+                document.getElementById('selectAll').checked = false;
+                updateDeleteBtn();
+                loadData();
+            } else {
+                alert('Gagal: ' + result.message);
+            }
+        } catch (e) {
+            alert('Error: ' + e.message);
+        }
+    }
+
+    async function openDetail(id) {
+        window.location.href = '/admin/qc-ganti-odp?id=' + id;
+    }
+
+    function openLightbox(url) {
+        const lb = document.getElementById('lightbox');
+        document.getElementById('lightboxImg').src = url;
+        lb.classList.remove('hidden');
+    }
+    function closeLightbox() {
+        document.getElementById('lightbox').classList.add('hidden');
+        document.getElementById('lightboxImg').src = '';
+    }
+
+    document.getElementById('dateFrom').addEventListener('change', loadData);
+    document.getElementById('dateTo').addEventListener('change', loadData);
+    document.getElementById('statusFilter').addEventListener('change', loadData);
+
+    loadData();
+</script>

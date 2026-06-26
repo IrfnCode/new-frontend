@@ -1,0 +1,190 @@
+
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+// User authentication logic (simulated based on previous pattern)
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown"; // Also change "username" to "admin_user" cookie to match what we use elsewhere, or check what is currently set
+const isAdmin = role === "ADMIN";
+
+// API connection will use internal Astro routes
+
+---
+
+<Layout title="History Assign - MORENA">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="history-assign" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined text-[24px]">history</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-on-surface font-headline tracking-tight">History Assign Saya</h2>
+                        <p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest leading-none mt-1">Personal Assignment Log</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="text-right">
+                        <p class="text-xs font-black text-on-surface">{username}</p>
+                        <p class="text-[9px] text-primary uppercase font-bold tracking-tighter">HelpDesk Agent</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-6">
+                <!-- Summary Card -->
+                <div class="bg-primary rounded-3xl p-6 shadow-xl shadow-primary/20 flex items-center justify-between overflow-hidden relative group">
+                    <div class="relative z-10 text-white">
+                        <p class="text-[10px] font-bold uppercase tracking-[0.2em] opacity-80 mb-1">TOTAL ASSIGN HARI INI</p>
+                        <h3 id="todayCount" class="text-4xl font-black font-headline tabular-nums">0</h3>
+                    </div>
+                    <span class="material-symbols-outlined text-[120px] absolute -right-4 -bottom-4 text-white/10 group-hover:scale-110 transition-transform duration-700">inventory_2</span>
+                </div>
+
+                <!-- Table Section -->
+                <div class="bg-surface-container-low border border-border-color rounded-3xl overflow-hidden shadow-sm">
+                    <div class="px-6 py-4 border-b border-border-color bg-surface-container/50 flex justify-between items-center">
+                        <h4 class="text-xs font-black text-on-surface uppercase tracking-widest">Daftar Tiket Ter-Assign</h4>
+                        <div class="flex items-center gap-2">
+                            <input id="searchInput" type="text" placeholder="Cari INC / Teknisi..." class="bg-surface border border-border-color rounded-xl px-4 py-2 text-xs focus:ring-2 focus:ring-primary/20 outline-none w-64" />
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-surface-container-high/30">
+                                    <th class="px-6 py-4 text-left text-[10px] font-black text-on-surface-variant uppercase tracking-widest">No INC</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Workzone</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Summary / Detail</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Ditugaskan Kepada</th>
+                                    <th class="px-6 py-4 text-left text-[10px] font-black text-on-surface-variant uppercase tracking-widest">Waktu Assign</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTable">
+                                <tr>
+                                    <td colspan="5" class="px-6 py-20 text-center">
+                                        <div class="flex flex-col items-center gap-2">
+                                            <span class="material-symbols-outlined animate-spin text-primary">sync</span>
+                                            <span class="text-xs text-on-surface-variant font-bold italic">Memuat riwayat...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline define:vars={{ username, isAdmin }}>
+        let allHistory = [];
+
+        async function fetchHistory() {
+            try {
+                // Fetch from the dedicated assignment history endpoint, which joins scraped_work_orders and assignment_history
+                const url = isAdmin ? `/api/get-assignment-history` : `/api/get-assignment-history?assigned_by=${encodeURIComponent(username)}`;
+                const res = await fetch(url);
+                const json = await res.json();
+                
+                if (json.status !== 'success') throw new Error(json.message);
+                
+                // No need to filter `&& t.assigned_to !== 'null'` anymore since it ONLY contains assignment log entries
+                allHistory = json.data;
+                
+                renderTable();
+                updateCount();
+            } catch (err) {
+                console.error(err);
+                document.getElementById("historyTable").innerHTML = '<tr><td colspan="5" class="p-10 text-center text-error font-bold">Gagal memuat data</td></tr>';
+            }
+        }
+
+        function renderTable(search = "") {
+            const tableBody = document.getElementById("historyTable");
+            const filtered = allHistory.filter(t => 
+                !search || 
+                t.order_id.toLowerCase().includes(search.toLowerCase()) ||
+                (t.summary && t.summary.toLowerCase().includes(search.toLowerCase())) ||
+                formatAssignees(t.assigned_to).toLowerCase().includes(search.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="py-20 text-center text-on-surface-variant italic">Tidak ada riwayat penugasan ditemukan.</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = filtered.map(t => `
+                <tr class="border-b border-border-color hover:bg-surface-container/50 transition-colors group">
+                    <td class="px-6 py-4 font-black text-sm text-primary group-hover:scale-105 transition-transform origin-left">${t.order_id}</td>
+                    <td class="px-6 py-4">
+                        <span class="px-2 py-1 bg-surface-container-high text-[10px] font-bold rounded-lg border border-border-color">${t.workzone || '-'}</span>
+                    </td>
+                    <td class="px-6 py-4 max-w-md">
+                        <p class="text-xs font-bold text-on-surface line-clamp-1">${t.summary || t.title}</p>
+                        <p class="text-[10px] text-on-surface-variant font-medium mt-0.5">${t.customer_type || 'REGULER'}</p>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[16px] text-on-surface-variant">engineering</span>
+                            <span class="text-xs font-black text-on-surface">${formatAssignees(t.assigned_to)}</span>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-bold text-on-surface">${new Date(t.reported_date).toLocaleDateString('id-ID')}</span>
+                            <span class="text-[10px] text-on-surface-variant uppercase font-bold tracking-tighter">SUCCESS ASSIGNED</span>
+                        </div>
+                    </td>
+                </tr>
+            `).join("");
+        }
+
+        function formatAssignees(assigned) {
+            if (!assigned) return "-";
+            try {
+                const list = typeof assigned === 'string' ? JSON.parse(assigned) : assigned;
+                if (!Array.isArray(list)) return "-";
+                return list.map(a => typeof a === 'object' ? a.nama : a).join(", ");
+            } catch(e) { return "-"; }
+        }
+
+        function updateCount() {
+            const today = new Date().toISOString().split('T')[0];
+            const todayCount = allHistory.filter(t => {
+                // Since we don't have assigned_at date, we estimate based on reported_date or just count total for now
+                // In a real app we would check a specific log table.
+                return t.reported_date && t.reported_date.startsWith(today);
+            }).length;
+            document.getElementById("todayCount").innerText = todayCount;
+        }
+
+        document.getElementById("searchInput")?.addEventListener("input", (e) => renderTable(e.target.value));
+
+        window.onload = fetchHistory;
+    </script>
+</Layout>
+
+<style is:global>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+    
+    :root {
+        --primary: #0040A1;
+        --on-primary: #FFFFFF;
+        --surface: #F8FAFC;
+        --on-surface: #0F172A;
+        --on-surface-variant: #64748B;
+        --border-color: #E2E8F0;
+        --surface-container-low: #FFFFFF;
+        --surface-container: #F1F5F9;
+        --surface-container-high: #E2E8F0;
+    }
+
+    .font-headline { font-family: 'Outfit', sans-serif; }
+    .font-body { font-family: 'Outfit', sans-serif; }
+</style>

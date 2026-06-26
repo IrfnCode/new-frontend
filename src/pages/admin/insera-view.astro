@@ -1,0 +1,633 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { InseraModel } from "../../lib/models/InseraModel";
+import { TechnicianModel } from "../../lib/models/TechnicianModel";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/tickets");
+}
+
+let initialWorkOrders = [];
+let technicians = [];
+let dbError = null;
+
+try {
+    technicians = await TechnicianModel.getAll();
+} catch (err) {
+    dbError = err.message;
+}
+---
+
+<Layout title="ALL TICKET LIST - INSERA View">
+    <meta name="current-user" content={username} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden bg-white text-black text-xs">
+        <Sidebar activePage="insera-view" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)] overflow-x-hidden relative">
+            <div class="p-4 flex flex-col gap-2">
+                <!-- Header -->
+                <div class="flex items-center gap-4">
+                    <h1 class="text-base font-bold uppercase tracking-wide">ALL TICKET LIST</h1>
+                </div>
+
+                <!-- Top Buttons -->
+                <div class="flex items-center gap-2 mb-2">
+                    <button class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 border border-gray-300 rounded text-[11px] font-semibold transition-colors">Bookmark</button>
+                    <button id="saveFilterBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 border border-gray-300 rounded text-[11px] font-semibold transition-colors">Save Filter</button>
+                    <span id="saveFilterStatus" class="text-green-600 font-bold ml-2 text-[10px] opacity-0 transition-opacity">Saved!</span>
+                </div>
+
+                <!-- Filters Section -->
+                <div class="border border-gray-300 bg-[#f9f9f9] p-3 rounded-sm space-y-3 filter-container">
+                    
+                    <!-- Row 1 -->
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-1">
+                            <select id="f_limit" class="border border-gray-300 p-1 text-[11px] outline-none">
+                                <option value="100">100</option>
+                                <option value="500">500</option>
+                                <option value="1000">1000</option>
+                            </select>
+                            <span class="text-[10px] text-gray-600">Items</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-1">
+                            <label class="text-[10px] text-gray-600 font-semibold w-24 text-right">Reported Date</label>
+                            <input type="datetime-local" id="f_reported_date_from" class="border border-gray-300 p-1 text-[10px] outline-none w-36" />
+                            <span>-</span>
+                            <input type="datetime-local" id="f_reported_date_to" class="border border-gray-300 p-1 text-[10px] outline-none w-36" />
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            <label class="text-[10px] text-gray-600 font-semibold w-20 text-right uppercase">Status Date</label>
+                            <input type="datetime-local" id="f_status_date_from" class="border border-gray-300 p-1 text-[10px] outline-none w-36" placeholder="From" />
+                            <span>-</span>
+                            <input type="datetime-local" id="f_status_date_to" class="border border-gray-300 p-1 text-[10px] outline-none w-36" placeholder="To" />
+                        </div>
+
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_witel_sumb" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="TIF FEB DISTRICT SUMB" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_owner" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="OWNER" />
+                        </div>
+
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_priority" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="REPORTED PRIORITY" />
+                        </div>
+                        
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_customer" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="CUSTOMER" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_ext_ticket" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="EXTERNAL TICKET ID" />
+                        </div>
+                    </div>
+
+                    <!-- Row 2 -->
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_channel" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="CHANNEL" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_customer_type" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="CUSTOMER TYPE" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_service_number" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="SERVICE NUMBER" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_service_type" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="SERVICE TYPE" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_service_id" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="SERVICE ID" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_slg" class="bg-transparent border-none outline-none text-[10px] w-20 placeholder-gray-400" placeholder="SLG" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_kode_produk" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="KODE PRODUK" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_datemodified" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="DATEMODIFIED" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_closed_by" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="CLOSED BY" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                    </div>
+
+                    <!-- Row 3 -->
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_witel" class="bg-transparent border-none outline-none text-[10px] w-36 placeholder-gray-400" placeholder="WITEL (TP, FYT, TUB...)" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_region" class="bg-transparent border-none outline-none text-[10px] w-20 placeholder-gray-400" placeholder="REGION" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_id_ticket" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="ID TICKET (INC...)" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_actual_solution" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="ACTUAL SOLUTION" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_symptom" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="SYMPTOM" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_incident_domain" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="INCIDENT DOMAIN" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_analysis" class="bg-transparent border-none outline-none text-[10px] w-36 placeholder-gray-400" placeholder="ANALYSIS, BACKEND, D..." />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_perangkat" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="PERANGKAT" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_description" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="DESCRIPTION ASSIGNE..." />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                    </div>
+
+                    <!-- Row 4 -->
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_technical" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="TECHNICAL" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_realm" class="bg-transparent border-none outline-none text-[10px] w-20 placeholder-gray-400" placeholder="REALM" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_device_name" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="DEVICE NAME" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_customer_id" class="bg-transparent border-none outline-none text-[10px] w-24 placeholder-gray-400" placeholder="CUSTOMER ID" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <select id="f_related_gamas" class="bg-transparent border-none outline-none text-[10px] w-36 text-gray-600">
+                                <option value="">RELATED TO GAMAS</option>
+                                <option value="YES">YES</option>
+                                <option value="NO">NO</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_ticket_id_gamas" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="TICKET ID GAMAS" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_guarante_status" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="GUARANTE STATUS" />
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">search</span>
+                            <span class="material-symbols-outlined text-[14px] text-gray-500 cursor-pointer">delete</span>
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_customer_name" class="bg-transparent border-none outline-none text-[10px] w-32 placeholder-gray-400" placeholder="CUSTOMER NAME" />
+                        </div>
+                        <div class="flex items-center gap-1 border-b border-gray-300 pb-0.5">
+                            <input type="text" id="f_contact_name" class="bg-transparent border-none outline-none text-[10px] w-28 placeholder-gray-400" placeholder="CONTACT NAME" />
+                        </div>
+                        
+                        <div class="ml-auto flex items-center gap-2 pt-2">
+                            <button id="clearFilterBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-3 border border-gray-300 rounded text-[11px] font-semibold transition-colors">Clear Filter</button>
+                            <button id="minimizeBtn" class="bg-[#d9edf7] hover:bg-[#c4e3f3] text-[#31708f] py-1 px-3 border border-[#bce8f1] rounded text-[11px] font-semibold transition-colors">Minimize</button>
+                            <button id="showBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-4 border border-gray-300 rounded text-[11px] font-semibold transition-colors flex items-center gap-1">
+                                <span id="showSpinner" class="material-symbols-outlined animate-spin hidden text-[14px]">progress_activity</span>
+                                Show
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info Label -->
+                <div class="mt-2 text-[11px] text-gray-700">
+                    <span id="resultCount" class="font-bold">0</span> items found, displaying all items.
+                </div>
+
+                <!-- Table Container -->
+                <div class="overflow-x-auto w-full border border-gray-300">
+                    <table class="w-full text-left border-collapse whitespace-nowrap">
+                        <thead class="bg-gray-200 text-[10px] font-bold text-gray-700 uppercase border-b border-gray-300">
+                            <tr>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[120px]">
+                                    INCIDENT <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">TTR CUSTOMER</th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[300px]">SUMMARY</th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[120px]">
+                                    REPORTED DATE <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    OWNER GROUP <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[150px]">
+                                    OWNER <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    CUSTOMER SEGMENT <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    SERVICE TYPE <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[80px]">
+                                    WITEL <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    WORKZONE <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    STATUS <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[120px]">
+                                    STATUS DATE <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">TICKET ID GAMAS</th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[100px]">
+                                    REPORTED BY <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 border-r border-gray-300 font-bold min-w-[120px]">
+                                    CONTACT PHONE <span class="material-symbols-outlined text-[12px] align-middle float-right">unfold_more</span>
+                                </th>
+                                <th class="px-2 py-2 font-bold min-w-[150px]">AKSI / ASSIGN</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="bg-white">
+                            <!-- Data will be injected here via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+</Layout>
+
+<!-- Assign Modal -->
+<div id="assignModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] hidden">
+    <div class="bg-white border border-gray-300 rounded-lg w-full max-w-lg mx-4 shadow-2xl overflow-hidden font-body text-sm">
+        <div class="px-4 py-3 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <h3 class="text-gray-800 text-base font-bold">Assign Ticket</h3>
+            <button id="closeAssignModal" class="text-gray-500 hover:text-red-500 transition-colors">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-4 space-y-4">
+            <input type="hidden" id="assignOrderId" />
+            
+            <div>
+                <p class="text-xs text-gray-500 mb-1">TICKET INCIDENT</p>
+                <p id="assignInc" class="font-bold text-gray-800"></p>
+            </div>
+            
+            <div>
+                <label class="block text-gray-700 text-xs font-bold mb-2">Pilih Teknisi</label>
+                <div class="border border-gray-200 rounded max-h-48 overflow-y-auto p-2 space-y-1">
+                    {technicians.map(t => (
+                        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                            <input type="checkbox" name="assignTech[]" value={t.nik} data-nama={t.nama} class="tech-checkbox w-4 h-4 text-blue-600 rounded border-gray-300" />
+                            <span class="text-sm">{t.nama} <span class="text-xs text-gray-400">({t.nik})</span></span>
+                        </label>
+                    ))}
+                </div>
+            </div>
+        </div>
+        <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 flex justify-end gap-2">
+            <button id="cancelAssign" class="px-4 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm font-semibold hover:bg-gray-50">Batal</button>
+            <button id="submitAssign" class="px-4 py-1.5 bg-blue-600 text-white rounded text-sm font-semibold hover:bg-blue-700 flex items-center gap-2">
+                <span id="assignSpinner" class="material-symbols-outlined animate-spin hidden text-[16px]">progress_activity</span>
+                <span>Assign & Kirim</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script define:vars={{ initialWorkOrders, username }}>
+    // We pass data from SSR to JS
+    window.WORK_ORDERS = initialWorkOrders || [];
+    window.CURRENT_USER = username;
+</script>
+
+<script>
+    const STORAGE_KEY = `insera_filter_${window.CURRENT_USER}`;
+    
+    // Filter Inputs Mapping
+    const filterInputs = {
+        limit: document.getElementById('f_limit'),
+        dateFrom: document.getElementById('f_reported_date_from'),
+        dateTo: document.getElementById('f_reported_date_to'),
+        idTicket: document.getElementById('f_id_ticket'),
+        witel: document.getElementById('f_witel'),
+        owner: document.getElementById('f_owner'),
+        extTicket: document.getElementById('f_ext_ticket'),
+        channel: document.getElementById('f_channel'),
+        customerType: document.getElementById('f_customer_type'),
+        serviceNo: document.getElementById('f_service_number'),
+        serviceType: document.getElementById('f_service_type'),
+        contactPhone: document.getElementById('f_contact_name'), // used for contact/name search loosely
+    };
+
+    function loadFilters() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                const config = JSON.parse(saved);
+                Object.keys(filterInputs).forEach(key => {
+                    if (filterInputs[key] && config[key] !== undefined) {
+                        filterInputs[key].value = config[key];
+                    }
+                });
+            } catch(e) {
+                console.error("Failed to parse filter config", e);
+            }
+        }
+    }
+
+    function saveFilters() {
+        const config = {};
+        Object.keys(filterInputs).forEach(key => {
+            if (filterInputs[key]) {
+                config[key] = filterInputs[key].value;
+            }
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        
+        const status = document.getElementById('saveFilterStatus');
+        status.classList.remove('opacity-0');
+        setTimeout(() => {
+            status.classList.add('opacity-0');
+        }, 2000);
+    }
+
+    function clearFilters() {
+        Object.values(filterInputs).forEach(input => {
+            if (input) {
+                if (input.tagName === 'SELECT') {
+                    input.selectedIndex = 0;
+                } else {
+                    input.value = '';
+                }
+            }
+        });
+    }
+
+    function calculateTTR(reportedDate) {
+        if (!reportedDate) return '-';
+        const start = new Date(reportedDate).getTime();
+        const now = new Date().getTime();
+        const diff = now - start;
+        if (diff < 0) return '-';
+        
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        
+        let ttrText = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+        
+        // Return styled HTML
+        if (hours >= 24) {
+            return `<span class="text-red-600 font-bold">${ttrText}</span>`;
+        } else if (hours >= 12) {
+            return `<span class="text-orange-500 font-bold">${ttrText}</span>`;
+        }
+        return `<span>${ttrText}</span>`;
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        const countSpan = document.getElementById('resultCount');
+        
+        let filtered = window.WORK_ORDERS || [];
+        countSpan.textContent = filtered.length;
+        
+        // Render HTML
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="16" class="p-4 text-center text-gray-500">Silakan tekan "Show" untuk memuat data secara live.</td></tr>`;
+            return;
+        }
+
+        const rowsHtml = filtered.map(wo => {
+            const isAssigned = wo.status === 'ASSIGNED' || (wo.assigned_to && wo.assigned_to !== '[]' && wo.assigned_to !== 'null');
+            const assignText = isAssigned ? 'Re-Assign' : 'Assign';
+            const btnColor = isAssigned ? 'bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200' : 'bg-blue-100 text-blue-700 border-blue-300 hover:bg-blue-200';
+            
+            // Format Assignees
+            let assignedToHtml = '-';
+            try {
+                if (wo.assigned_to && wo.assigned_to !== 'null') {
+                    const parsed = JSON.parse(wo.assigned_to);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        assignedToHtml = parsed.map(t => `<div class="text-[9px] bg-gray-100 border border-gray-200 rounded px-1 mb-0.5 inline-block mr-1 truncate max-w-[120px]" title="${t.nama}">${t.nama}</div>`).join('');
+                    } else if (typeof parsed === 'string') {
+                        assignedToHtml = parsed;
+                    }
+                }
+            } catch(e) {}
+
+            return `
+                <tr class="border-b border-gray-200 hover:bg-yellow-50 transition-colors">
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">
+                        <a href="#" class="text-blue-600 font-bold hover:underline" onclick="event.preventDefault()">${wo.order_id || '-'}</a>
+                    </td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top text-center">${calculateTTR(wo.reported_date)}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top max-w-[300px] whitespace-normal">
+                        <div class="line-clamp-4 leading-tight">${wo.summary || '-'}</div>
+                    </td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.reported_date || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.owner_group || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top whitespace-normal max-w-[150px] break-words">
+                        ${wo.assigned_by ? `HD: ${wo.assigned_by}` : (wo.owner || '-')}
+                    </td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.customer_segment || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.ticket_type || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.witel || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.workzone || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top font-bold ${wo.status === 'ASSIGNED' ? 'text-purple-600' : 'text-gray-700'}">${wo.status || 'OPEN'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.status_date || wo.reported_date || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">-</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.reported_by || '-'}</td>
+                    <td class="px-2 py-1 border-r border-gray-200 align-top">${wo.contact_phone || '-'}</td>
+                    <td class="px-2 py-1 align-top space-y-1">
+                        <button onclick="openAssignModal('${wo.id}', '${wo.order_id}')" class="w-full text-center py-1 border rounded text-[10px] font-bold ${btnColor}">
+                            ${assignText}
+                        </button>
+                        ${isAssigned ? `<div class="mt-1">${assignedToHtml}</div>` : ''}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        tbody.innerHTML = rowsHtml;
+    }
+
+    // Modal Logic
+    const assignModal = document.getElementById('assignModal');
+    let currentAssignId = null;
+
+    window.openAssignModal = function(id, orderId) {
+        currentAssignId = id;
+        document.getElementById('assignOrderId').value = id;
+        document.getElementById('assignInc').textContent = orderId;
+        
+        // Reset checkboxes
+        document.querySelectorAll('.tech-checkbox').forEach(cb => cb.checked = false);
+        
+        assignModal.classList.remove('hidden');
+    }
+
+    function closeAssignModal() {
+        assignModal.classList.add('hidden');
+        currentAssignId = null;
+    }
+
+    document.getElementById('closeAssignModal').addEventListener('click', closeAssignModal);
+    document.getElementById('cancelAssign').addEventListener('click', closeAssignModal);
+
+    // Perform Assign
+    document.getElementById('submitAssign').addEventListener('click', async () => {
+        if (!currentAssignId) return;
+        
+        const selected = Array.from(document.querySelectorAll('.tech-checkbox:checked')).map(cb => ({
+            nik: cb.value,
+            nama: cb.getAttribute('data-nama')
+        }));
+
+        if (selected.length === 0) {
+            alert('Pilih minimal 1 teknisi');
+            return;
+        }
+
+        const btn = document.getElementById('submitAssign');
+        const spinner = document.getElementById('assignSpinner');
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/insera-tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'assign',
+                    id: currentAssignId,
+                    assignedTo: selected,
+                    assignedBy: window.CURRENT_USER
+                })
+            });
+
+            const result = await response.json();
+            if (result.status === 'success') {
+                // Update local state
+                const woIndex = window.WORK_ORDERS.findIndex(w => w.id == currentAssignId);
+                if (woIndex > -1) {
+                    window.WORK_ORDERS[woIndex].status = 'ASSIGNED';
+                    window.WORK_ORDERS[woIndex].assigned_to = JSON.stringify(selected);
+                    window.WORK_ORDERS[woIndex].assigned_by = window.CURRENT_USER;
+                }
+                renderTable();
+                closeAssignModal();
+            } else {
+                alert('Gagal assign: ' + (result.message || 'Unknown error'));
+            }
+        } catch(e) {
+            alert('Error network saat assign: ' + e.message);
+        } finally {
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+        }
+    });
+
+    async function fetchLiveScrape() {
+        const btn = document.getElementById('showBtn');
+        const spinner = document.getElementById('showSpinner');
+        const tbody = document.getElementById('tableBody');
+        
+        btn.disabled = true;
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = `<tr><td colspan="16" class="p-4 text-center text-gray-500 flex justify-center items-center gap-2"><span class="material-symbols-outlined animate-spin text-blue-500">progress_activity</span> Mengambil data live dari Insera...</td></tr>`;
+        
+        // Build filters payload
+        const filters = {
+            limit: filterInputs.limit.value,
+            dateFrom: filterInputs.dateFrom.value,
+            dateTo: filterInputs.dateTo.value,
+            statusDateFrom: document.getElementById('f_status_date_from').value,
+            statusDateTo: document.getElementById('f_status_date_to').value,
+            witel: filterInputs.witel.value,
+            idTicket: filterInputs.idTicket.value,
+            owner: filterInputs.owner.value,
+            customerName: filterInputs.customer.value || '',
+            serviceNo: filterInputs.serviceNo.value || '',
+            status: document.getElementById('f_priority') ? '' : '' // adjust mapping as needed
+        };
+
+        try {
+            const response = await fetch('/api/live-scrape', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filters })
+            });
+
+            const result = await response.json();
+            if (result.status === 'success') {
+                window.WORK_ORDERS = result.data || [];
+                renderTable();
+            } else {
+                alert('Gagal Live Scrape: ' + (result.message || 'Error'));
+                renderTable();
+            }
+        } catch(e) {
+            alert('Error network saat Live Scrape: ' + e.message);
+            renderTable();
+        } finally {
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+        }
+    }
+
+    // Setup event listeners
+    document.getElementById('saveFilterBtn').addEventListener('click', saveFilters);
+    document.getElementById('clearFilterBtn').addEventListener('click', clearFilters);
+    document.getElementById('showBtn').addEventListener('click', fetchLiveScrape);
+    
+    // Auto re-render on Enter key in input fields
+    document.querySelector('.filter-container').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            fetchLiveScrape();
+        }
+    });
+
+    // Init
+    loadFilters();
+    renderTable();
+</script>
+
+<style>
+    /* Mimic exact INSERA font size and compactness */
+    table th, table td {
+        font-family: Arial, sans-serif;
+    }
+</style>

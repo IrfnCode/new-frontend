@@ -1,0 +1,258 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getWorkzonesByArea } from "../lib/utils/area-mapping";
+
+const sa = Astro.url.searchParams.get("sa");
+const saName = sa ? decodeURIComponent(sa) : "Unknown Area";
+const workzones = sa ? getWorkzonesByArea(saName) : [];
+
+// API URL for backend calls
+const PUBLIC_BACKEND_URL = import.meta.env.PUBLIC_BACKEND_URL;
+---
+
+<Layout title={`Morena Sector - ${saName}`}>
+    <div class="min-h-screen bg-surface p-4 font-body pb-20">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h1 class="text-2xl font-black text-on-surface font-headline leading-tight">{saName}</h1>
+                <p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-widest leading-none mt-1">Sektor Monitoring</p>
+            </div>
+            <button id="refreshBtn" class="p-2 rounded-full bg-surface-container-high text-primary">
+                <span class="material-symbols-outlined">sync</span>
+            </button>
+        </div>
+
+        <!-- Ticket List Container -->
+        <div id="ticketContainer" class="space-y-3">
+            <div class="py-20 text-center text-on-surface-variant animate-pulse italic">
+                Synchronizing sector data...
+            </div>
+        </div>
+
+        <!-- Reassign Modal -->
+        <div id="reassignModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center hidden">
+            <div class="bg-surface w-full max-w-md rounded-t-[32px] p-6 pb-10 shadow-2xl space-y-4 animate-slide-up">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-black text-on-surface font-headline uppercase leading-none">Re-Assign Tiket</h3>
+                        <p id="modalOrderId" class="text-[10px] font-bold text-primary mt-1">--</p>
+                    </div>
+                    <button id="closeModal" class="p-2 rounded-full bg-surface-container-high">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+                    <input id="techSearch" type="text" placeholder="Cari teknisi..." class="w-full bg-surface-container-high border-none rounded-2xl py-3 pl-10 pr-4 text-sm font-bold focus:ring-2 focus:ring-primary/20 transition-all" />
+                </div>
+
+                <div id="techList" class="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                    <!-- Tech list rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script is:inline define:vars={{ PUBLIC_BACKEND_URL, saName, workzones }}>
+        const API_URL = PUBLIC_BACKEND_URL;
+        let tickets = [];
+        let technicians = [];
+        let selectedTicketId = null;
+
+        async function init() {
+            await fetchTechnicians();
+            await fetchTickets();
+        }
+
+        async function fetchTechnicians() {
+            try {
+                const res = await fetch('/api/manage-technician');
+                const result = await res.json();
+                technicians = result.status === 'success' ? result.data : [];
+            } catch (err) { console.error(err); technicians = []; }
+        }
+
+        async function fetchTickets() {
+            const container = document.getElementById("ticketContainer");
+            try {
+                // Fetch KORLAP/HSA view - gets assigned and closed tickets from tiket_simple
+                const res = await fetch('/api/insera-tickets?view=korlap');
+                const data = await res.json();
+                
+                // Filter by Status and Workzone
+                tickets = (Array.isArray(data) ? data : []).filter(t => {
+                    const wz = t.workzone?.toUpperCase().trim() || "";
+                    return (t.status === 'ASSIGNED' || t.status === 'CLOSED') && workzones.includes(wz) && t.assigned_to;
+                });
+
+                renderTickets();
+            } catch (err) {
+                console.error("[Sector Tickets] Fetch error:", err);
+                container.innerHTML = '<div class="py-10 text-center text-error font-bold">Gagal mengambil data tiket</div>';
+            }
+        }
+
+        function renderTickets() {
+            const container = document.getElementById("ticketContainer");
+            if (tickets.length === 0) {
+                container.innerHTML = '<div class="py-20 text-center text-on-surface-variant italic">Tidak ada tiket aktif di sektor ini.</div>';
+                return;
+            }
+
+            container.innerHTML = tickets.map(t => {
+                const isClosed = t.status === 'CLOSED';
+                const statusColor = isClosed ? 'green-500' : 'primary';
+                
+                return `
+                <div class="bg-surface-container-low border border-border-color rounded-2xl p-4 shadow-sm space-y-3 ${isClosed ? 'opacity-80' : ''}">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <span class="text-[10px] font-bold text-${statusColor} uppercase tracking-widest block">${t.order_id}</span>
+                            <h4 class="text-sm font-black text-on-surface line-clamp-2 mt-1">${t.summary || t.title}</h4>
+                        </div>
+                        <div class="flex flex-col gap-1 items-end">
+                            <span class="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-lg uppercase border border-primary/20">${t.workzone}</span>
+                            <span class="px-2 py-0.5 bg-${statusColor}/10 text-${statusColor} text-[8px] font-black rounded-lg uppercase border border-${statusColor}/20 tracking-widest">${t.status}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-3 pt-2 border-t border-border-color">
+                        <div class="w-8 h-8 rounded-full bg-${statusColor}/10 flex items-center justify-center text-${statusColor}">
+                            <span class="material-symbols-outlined text-[16px]">${isClosed ? 'task_alt' : 'engineering'}</span>
+                        </div>
+                        <div class="flex-1 overflow-hidden">
+                            <p class="text-[9px] text-on-surface-variant font-bold uppercase leading-none mb-1">Assigned To:</p>
+                            <p class="text-xs font-black text-on-surface truncate">${formatAssignees(t.assigned_to)}</p>
+                        </div>
+                    </div>
+
+                    ${isClosed 
+                        ? `<div class="w-full py-2.5 bg-surface-container-high text-green-500 text-[11px] font-black uppercase rounded-xl border border-green-500/20 text-center tracking-widest">
+                            ✅ TIKET CLOSED
+                           </div>`
+                        : `<button onclick="openReassignModal('${t.id}', '${t.order_id}')" class="w-full py-2.5 bg-primary text-white text-[11px] font-black uppercase rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all">
+                            Pindahkan Penugasan (Re-Assign)
+                           </button>`
+                    }
+                </div>
+            `}).join("");
+        }
+
+        function formatAssignees(assigned) {
+            if (!assigned) return "-";
+            const list = typeof assigned === 'string' ? JSON.parse(assigned) : assigned;
+            if (!Array.isArray(list)) return "-";
+            return list.map(a => typeof a === 'object' ? a.nama : a).join(", ");
+        }
+
+        window.openReassignModal = (id, orderId) => {
+            selectedTicketId = id;
+            document.getElementById("modalOrderId").innerText = orderId;
+            renderTechList();
+            document.getElementById("reassignModal").classList.remove("hidden");
+        };
+
+        function renderTechList(search = "") {
+            const container = document.getElementById("techList");
+            const filtered = technicians.filter(t => 
+                !search || 
+                t.nama.toLowerCase().includes(search.toLowerCase()) || 
+                t.nik.includes(search)
+            );
+
+            container.innerHTML = filtered.map(t => `
+                <div onclick="processReassign('${t.nik}', '${t.nama}', '${t.tag_telegram}')" class="flex items-center gap-3 p-3 bg-surface-container-low rounded-xl border border-border-color active:scale-95 transition-all">
+                    <div class="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant text-[12px] font-bold">
+                        ${t.nama.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                        <p class="text-sm font-black text-on-surface leading-none">${t.nama}</p>
+                        <p class="text-[10px] text-on-surface-variant font-bold mt-1">${t.nik} • ${t.sektor || '-'}</p>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+        window.processReassign = async (nik, name, telegram) => {
+            if (!confirm(`Pindahkan tiket ke ${name}?`)) return;
+
+            const btn = document.getElementById("reassignModal").querySelector("div.mt-4 > button");
+            const rawTxt = btn ? btn.innerHTML : "Memproses...";
+            if(btn) btn.innerHTML = "Memproses...";
+
+            try {
+                // 1. Update di Database
+                const assignRes = await fetch("/api/insera-tickets", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'assign',
+                        id: selectedTicketId,
+                        assignedTo: [{ nik, nama: name, tag_telegram: telegram }],
+                        assignedBy: `KORLAP / HSA (${saName})`
+                    })
+                });
+
+                if (!assignRes.ok) throw new Error("Gagal mengupdate database penugasan.");
+
+                // 2. Kirim Notifikasi Telegram Alert
+                const ticketData = tickets.find(t => t.id == selectedTicketId);
+                const alertRes = await fetch("/api/send-insera-alert", {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ticket: ticketData || { id: selectedTicketId, workzone: ticketData?.workzone || "" },
+                        assignedTo: [{ nik, nama: name, tag_telegram: telegram }],
+                        actorName: `KORLAP / HSA (${saName})`,
+                        isReassign: true
+                    })
+                });
+
+                alert("Penugasan berhasil dipindahkan!");
+                document.getElementById("reassignModal").classList.add("hidden");
+                fetchTickets(); // Refresh daftar otomatis
+            } catch (err) {
+                alert("Terjadi kesalahan: " + err.message);
+            } finally {
+                if(btn) btn.innerHTML = rawTxt;
+            }
+        };
+
+        document.getElementById("closeModal").onclick = () => document.getElementById("reassignModal").classList.add("hidden");
+        document.getElementById("techSearch").oninput = (e) => renderTechList(e.target.value);
+        document.getElementById("refreshBtn").onclick = () => fetchTickets();
+
+        init();
+    </script>
+</Layout>
+
+<style is:global>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+    
+    :root {
+        --primary: #0040A1;
+        --surface: #F8FAFC;
+        --on-surface: #0F172A;
+        --on-surface-variant: #64748B;
+        --border-color: #E2E8F0;
+        --surface-container-low: #FFFFFF;
+        --surface-container-high: #E2E8F0;
+    }
+
+    .font-headline { font-family: 'Outfit', sans-serif; }
+    .font-body { font-family: 'Outfit', sans-serif; }
+
+    .animate-slide-up {
+        animation: slideUp 0.3s cubic-bezier(0.87, 0, 0.13, 1);
+    }
+
+    @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+    }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
+</style>

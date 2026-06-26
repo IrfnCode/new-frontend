@@ -1,0 +1,205 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+
+const logs = [
+    {
+        version: "26.04.29",
+        date: "29 April 2026",
+        title: "TTR Engine, Ticket Teknisi & Multi-Role System",
+        description: "Major update covering role-based access control, technician ticket management, TTR monitoring, and smarter assignment notifications.",
+        items: [
+            "TTR (Time To Recover) Engine: Kalkulasi otomatis batas waktu penanganan per tier (DIAMOND 3h, PLATINUM 6h, GOLD 12h, REGULER 24h) dengan status NEW / NEAR EXPIRED / EXPIRED.",
+            "TTR hanya berlaku untuk Source REGULER — SQM, UNSPEC, INFRACARE dikecualikan.",
+            "Booking Date Support: Tier REGULER & HVC_GOLD menghitung TTR dari booking date jika tersedia.",
+            "Kolom TTR di Data Tiket INSERA: Tampilan visual per baris dengan warna status dan sisa waktu real-time.",
+            "TTR Block di semua notifikasi Telegram: Assign, Bulk Assign, Reminder, Reopen, Status Change.",
+            "Perbaikan Tipe Tiket vs Tier di notifikasi: Tier dari customer_type, Tipe dari reported_by (SQM/UNSPEC/INFRACARE/REGULER).",
+            "Menu Ticket Teknisi: Halaman baru menampilkan tiket per teknisi dengan filter Service Area, tanggal, dan pencarian.",
+            "Default filter tanggal hari ini pada Menu Ticket Teknisi.",
+            "Tombol Remind, Reopen, dan Change Status pada tiket teknisi dengan notifikasi Telegram ke teknisi, grup, dan tag KORLAP/HSA.",
+            "Tag KORLAP/HSA sesuai Service Area pada notifikasi Reminder.",
+            "Multi-Role System: Tambah role KORLAP, HSA, MEMBER dengan hak akses spesifik per halaman.",
+            "Bulk Assign & Send Tiket INSERA: Pilih banyak tiket sekaligus, assign ke beberapa teknisi, kirim satu pesan Telegram.",
+            "Kolom Assigned To, Assigned By, dan Status di halaman Data Tiket.",
+            "Validasi tiket INSERA saat input manual: Alert jika nomor tiket terdeteksi dari INSERA.",
+            "Auto-sync status INSERA ke CLOSED saat teknisi input manual tiket yang sama.",
+            "Fix scraper ON DUPLICATE KEY: assigned_to, assigned_by, dan status tidak lagi tertimpa saat scraper restart.",
+            "Cleanup multi-assign: Saat satu teknisi update tiket bersama, teknisi lain otomatis dihapus dari list.",
+            "Stats card Near Expired & EXPIRED menggunakan TTR per-tier (bukan hardcode 24h).",
+            "Perbaikan layout tabel responsif terhadap sidebar minimize/maximize."
+        ],
+        isLatest: true
+    },
+    {
+        version: "26.04.17",
+        date: "17 April 2026",
+        title: "Global Insera Integration & Dashboard Modernization",
+        description: "Standardizing the platform for high-performance data monitoring and secure backend connectivity.",
+        items: [
+            "Live Insera Synchronization via Secure Proxy: Real-time scraping data now fully integrated.",
+            "Material-Inspired Dashboard: Modernized UI with vibrant stats, interactive charts, and responsive layouts.",
+            "Assignment Audit Trail: Comprehensive history tracking for technician workloads and helpdesk actions.",
+            "Smart Search & Filtering: Advanced ODP, Service No, and Technician filtering across all data tables."
+        ]
+    },
+    {
+        version: "26.04.14",
+        date: "14 Maret 2026",
+        title: "Full System Consolidation & Synchronization",
+        description: "Modernizing administrative controls and ensuring field data integrity.",
+        items: [
+            "Unified Configuration Dashboard: Accounts, Mapping, RCA, and Ticket Types in one place.",
+            "Dynamic Form Synchronization: Input and Update pages now pull live data from DB.",
+            "Sidebar 3.0: Optimized navigation with System Control grouping.",
+            "Enhanced Security: Role-based tab visibility within configuration."
+        ]
+    },
+    {
+        version: "26.04.03",
+        date: "12 Maret 2026",
+        title: "Dynamic Core Foundation",
+        description: "The transition from hardcoded structures to a dynamic, database-driven system.",
+        items: [
+            "Introduction of ConfigModel for centralized data management.",
+            "Database implementation for tiket_perbaikan and tiket_jenis.",
+            "Initial Unified Config UI (Router Map & RCA)."
+        ]
+    },
+    {
+        version: "26.04.02",
+        date: "10 Maret 2026",
+        title: "Insera Scraper 2.0",
+        description: "Improving data visibility and scraper automation performance.",
+        items: [
+            "Customizable Table: Toggle columns on/off based on user preference.",
+            "Advanced Filtering: Filter by Customer Segment and Regional Area.",
+            "Performance Dashboard: Visual charts for scraper success rates."
+        ]
+    },
+    {
+        version: "26.04.01",
+        date: "07 Maret 2026",
+        title: "Core Automation & Integration",
+        description: "Building the background services and initial modern Foundation.",
+        items: [
+            "Integrated Insera Headless Scraper and Automated Auth.",
+            "Telegram Bot Router: Automatic notification to specialized regional groups.",
+            "Initial migration to modern Astro + Tailwind architecture."
+        ]
+    }
+];
+
+const comingSoon = [
+    { title: "Auto TTR Alert Scheduler", desc: "Notifikasi otomatis ke grup saat tiket mendekati atau melewati batas TTR tanpa perlu klik Remind." },
+    { title: "Personnel Mini-App 2.0", desc: "Korlap/HSA Reassign tickets directly from Telegram." },
+    { title: "Live Monitoring Fleet", desc: "Real-time ticket status monitoring by Service Area in Mini-apps." }
+];
+---
+
+<Layout title="MORENA - Update Log & Journey">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="changelog" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500">
+            <!-- Header -->
+            <header class="sticky top-0 z-40 px-8 py-10 w-full bg-surface/70 backdrop-blur-xl border-b border-border-color flex flex-col gap-2">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-primary shadow-lg shadow-primary/20 flex items-center justify-center text-white">
+                        <span class="material-symbols-outlined text-2xl">history_edu</span>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl font-black text-on-surface font-headline tracking-tighter">Update Log</h1>
+                        <p class="text-xs font-bold text-on-surface-variant uppercase tracking-[0.2em]">The Evolution of MORENA Platform</p>
+                    </div>
+                </div>
+            </header>
+
+            <div class="p-8 max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-12">
+                
+                <!-- Journey Timeline -->
+                <div class="lg:col-span-2 space-y-12 relative">
+                    <!-- Vertical Line -->
+                    <div class="absolute left-6 top-8 bottom-8 w-px bg-gradient-to-b from-primary via-border-color to-transparent hidden md:block"></div>
+
+                    {logs.map((log) => (
+                        <div class="relative pl-0 md:pl-16 group">
+                            <!-- Version Badge (Mobile) -->
+                            <div class="flex md:hidden items-center gap-2 mb-4">
+                                <span class="px-3 py-1 bg-primary text-white text-[10px] font-black rounded-lg uppercase tracking-widest">{log.version}</span>
+                                <span class="h-px flex-1 bg-border-color"></span>
+                            </div>
+
+                            <!-- Timeline Dot -->
+                            <div class={`absolute left-4 top-1 w-4 h-4 rounded-full border-4 border-surface z-10 transition-all duration-500 group-hover:scale-125 hidden md:block ${log.isLatest ? 'bg-primary ring-4 ring-primary/20 shadow-[0_0_15px_rgba(0,0,0,0.1)]' : 'bg-on-surface-variant'}`}></div>
+
+                            <div class={`p-8 rounded-[2rem] border transition-all duration-500 ${log.isLatest ? 'bg-primary-container/10 border-primary/20 shadow-xl shadow-primary/5' : 'bg-surface-container-lowest border-border-color hover:border-primary/20'}`}>
+                                <div class="flex justify-between items-start mb-4">
+                                    <div class="space-y-1">
+                                        <div class="flex items-center gap-3">
+                                            <h3 class="text-xl font-black text-on-surface font-headline leading-tight">{log.title}</h3>
+                                            {log.isLatest && <span class="px-2 py-0.5 bg-green-500 text-white text-[8px] font-black rounded uppercase tracking-widest animate-pulse">Stable</span>}
+                                        </div>
+                                        <p class="text-xs font-bold text-on-surface-variant tracking-wide">{log.date}</p>
+                                    </div>
+                                    <span class="hidden md:block px-3 py-1 bg-surface-container-high border border-border-color text-on-surface text-[10px] font-black rounded-xl uppercase tracking-widest">{log.version}</span>
+                                </div>
+                                
+                                <p class="text-sm text-on-surface-variant mb-6 leading-relaxed font-medium italic">"{log.description}"</p>
+                                
+                                <ul class="space-y-3">
+                                    {log.items.map(item => (
+                                        <li class="flex items-start gap-3">
+                                            <span class="w-1.5 h-1.5 rounded-full bg-primary/40 mt-1.5 shrink-0"></span>
+                                            <span class="text-sm font-bold text-on-surface/80 leading-snug">{item}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <!-- Sidebar Roadmap -->
+                <div class="space-y-8">
+                    <div class="bg-on-surface rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+                        <!-- Decorations -->
+                        <div class="absolute -top-10 -right-10 w-40 h-40 bg-primary/20 rounded-full blur-3xl transition-all group-hover:bg-primary/40"></div>
+                        
+                        <div class="relative">
+                            <h3 class="text-2xl font-black font-headline tracking-tighter mb-2">Coming Soon</h3>
+                            <p class="text-[10px] font-bold text-white/50 uppercase tracking-widest mb-8">Future Development Roadmap</p>
+                            
+                            <div class="space-y-6">
+                                {comingSoon.map(feature => (
+                                    <div class="space-y-2 border-l-2 border-primary/30 pl-4 hover:border-primary transition-colors">
+                                        <h4 class="text-sm font-black text-white/90">{feature.title}</h4>
+                                        <p class="text-[11px] text-white/60 leading-relaxed font-medium">{feature.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div class="mt-12 p-4 bg-white/5 rounded-2xl border border-white/10 text-center">
+                                <p class="text-[9px] font-bold text-white/40 uppercase tracking-[0.25em]">Target Deployment</p>
+                                <p class="text-xl font-black text-primary mt-1">v26.05.01</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-surface-container-low rounded-[2rem] p-6 border border-border-color text-center space-y-4">
+                        <div class="w-12 h-12 bg-surface-container-high rounded-2xl mx-auto flex items-center justify-center text-on-surface-variant">
+                            <span class="material-symbols-outlined text-2xl"> rocket_launch</span>
+                        </div>
+                        <p class="text-xs font-bold text-on-surface-variant leading-relaxed">System is running on latest stable core. <br/>Keep up the productivity!</p>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+</Layout>
+
+<style is:global>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
+    .font-headline { font-family: 'Outfit', sans-serif; }
+</style>

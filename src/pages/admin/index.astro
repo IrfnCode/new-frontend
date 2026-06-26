@@ -1,0 +1,958 @@
+---
+// D:\batix\src\pages\admin\index.astro
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+---
+
+<Layout title="MORENA Admin - Rekap Tiket Closed">
+    <div class="flex min-h-screen font-body relative">
+        <Sidebar activePage="rekap" />
+        <main class="flex-1 min-w-0 p-8 bg-background min-h-screen transition-all duration-300">
+            <div class="max-w-[1600px] mx-auto space-y-8">
+                <!-- Header -->
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h1 class="text-3xl font-black font-headline text-on-background tracking-tight">Rekap Tiket Closed</h1>
+                        <p class="text-on-surface-variant text-sm mt-1 font-medium">Laporan Harian Performa Teknisi & Area</p>
+                    </div>
+                    <div class="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-2xl border border-border-color shadow-sm">
+                        <span class="material-symbols-outlined text-primary text-[20px]">calendar_month</span>
+                        <span id="dateRangeLabel" class="text-sm font-bold text-on-surface">Memuat...</span>
+                    </div>
+                </div>
+
+                <!-- Form Filter -->
+                <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                    <form id="dateFilterForm" class="flex flex-col md:flex-row gap-4 items-end">
+                        <div class="w-full md:w-auto">
+                            <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Dari Tanggal</label>
+                            <input type="date" id="start_date" class="w-full bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold transition-all shadow-sm">
+                        </div>
+                        <div class="w-full md:w-auto">
+                            <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Sampai Tanggal</label>
+                            <input type="date" id="end_date" class="w-full bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold transition-all shadow-sm">
+                        </div>
+                        <div class="flex items-center gap-3 w-full md:w-auto">
+                            <button type="submit" class="flex-1 md:flex-none flex items-center justify-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-2xl font-bold shadow-sm hover:bg-primary/90 hover:shadow-md transition-all active:scale-95">
+                                <span class="material-symbols-outlined text-[20px]">search</span>
+                                Tampilkan
+                            </button>
+                            <button type="button" id="todayBtn" class="flex-1 md:flex-none flex items-center justify-center gap-2 bg-surface-container-high text-on-surface hover:bg-surface-container-highest px-6 py-3 rounded-2xl font-bold transition-all active:scale-95 border border-border-color shadow-sm">
+                                <span class="material-symbols-outlined text-[20px]">today</span>
+                                Hari Ini
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Stat Cards Placeholder Loader -->
+                <div id="loadingOverlay" class="hidden flex-col items-center justify-center py-12">
+                    <svg class="animate-spin h-10 w-10 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-on-surface font-bold animate-pulse">Menyusun Data Laporan...</span>
+                </div>
+
+                <div id="dashboardContent" class="space-y-8">
+                    <!-- Stat Cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="statsCards"></div>
+
+                    <!-- Top 5 & Rata-rata -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm relative overflow-hidden">
+                            <div class="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
+                                <span class="material-symbols-outlined" style="font-size: 150px;">military_tech</span>
+                            </div>
+                            <div class="flex items-center gap-3 mb-6 relative z-10">
+                                <div class="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                                    <span class="material-symbols-outlined">emoji_events</span>
+                                </div>
+                                <h2 class="font-bold text-lg font-headline text-on-surface">Top 5 Teknisi Global</h2>
+                            </div>
+                            <ul id="topTeknisiList" class="space-y-3 relative z-10"></ul>
+                        </div>
+                        <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm relative overflow-hidden">
+                            <div class="absolute -right-6 -top-6 opacity-[0.03] pointer-events-none">
+                                <span class="material-symbols-outlined" style="font-size: 150px;">monitoring</span>
+                            </div>
+                            <div class="flex items-center gap-3 mb-6 relative z-10">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                                    <span class="material-symbols-outlined">bar_chart</span>
+                                </div>
+                                <h2 class="font-bold text-lg font-headline text-on-surface">Rata-rata Tiket per Area</h2>
+                            </div>
+                            <ul id="areaAvgList" class="space-y-3 relative z-10"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Tabel Jenis Tiket -->
+                    <div class="bg-surface-container-lowest rounded-3xl border border-border-color shadow-sm overflow-hidden">
+                        <div class="p-6 border-b border-border-color bg-surface-container-lowest flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                <span class="material-symbols-outlined">category</span>
+                            </div>
+                            <h2 class="font-bold text-lg font-headline text-on-surface">Rekapan Detail per Jenis Tiket</h2>
+                        </div>
+                        <div class="overflow-x-auto w-full">
+                            <table class="w-full text-left text-sm text-on-surface-variant" id="jenisTable">
+                                <thead class="bg-surface-container-low text-[11px] uppercase font-bold text-on-surface tracking-wider border-b border-border-color"></thead>
+                                <!-- Body injected here as multiple tbody tags -->
+                                <tfoot id="jenisTableFoot" class="bg-surface-container-high font-bold border-t border-border-color"></tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Grafik Bar & Pie -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                            <h2 class="font-bold text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-primary">leaderboard</span> Breakdown Service Area</h2>
+                            <div class="relative h-[300px] w-full">
+                                <canvas id="barChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                            <h2 class="font-bold text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-rose-500">pie_chart</span> Komposisi Jenis Tiket</h2>
+                            <div class="relative h-[300px] w-full flex justify-center">
+                                <canvas id="pieChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tabel Timeslot -->
+                    <div class="bg-surface-container-lowest rounded-3xl border border-border-color shadow-sm overflow-hidden">
+                        <div class="p-6 border-b border-border-color bg-surface-container-lowest flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500">
+                                <span class="material-symbols-outlined">schedule</span>
+                            </div>
+                            <div>
+                                <h2 class="font-bold text-lg font-headline text-on-surface">Time Slot Jam Close (08 - 24)</h2>
+                                <p class="text-[11px] text-on-surface-variant mt-1">Mengukur kepadatan penyelesaian tiket setiap jamnya</p>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto w-full">
+                            <table class="w-full text-left text-sm text-on-surface-variant" id="timeslotTable">
+                                <thead class="bg-surface-container-low text-[11px] uppercase font-bold text-on-surface tracking-wider border-b border-border-color"></thead>
+                                <!-- Body injected here as multiple tbody tags -->
+                                <tfoot id="timeslotTableFoot" class="bg-surface-container-high font-bold border-t border-border-color"></tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Grafik Trend -->
+                    <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                        <h2 class="font-bold text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-purple-500">timeline</span> Trend Penutupan Tiket per Jam</h2>
+                        <div class="relative h-[350px] w-full">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Laporan Khusus FFG -->
+                    <div class="space-y-6 mb-8">
+                        <!-- Charts Row -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- FFG Bar Chart -->
+                            <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                                <h2 class="font-bold text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-blue-500">leaderboard</span> Total Tiket FFG per Service Area</h2>
+                                <div class="relative h-[300px] w-full">
+                                    <canvas id="ffgBarChart"></canvas>
+                                </div>
+                            </div>
+
+                            <!-- FFG Pie Chart -->
+                            <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm">
+                                <h2 class="font-bold text-on-surface mb-6 flex items-center gap-2"><span class="material-symbols-outlined text-rose-500">donut_large</span> Klasifikasi Close FFG</h2>
+                                <div class="relative h-[300px] w-full flex justify-center">
+                                    <canvas id="ffgPieChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- FFG Table -->
+                        <div class="bg-surface-container-lowest rounded-3xl border border-border-color shadow-sm overflow-hidden flex flex-col">
+                            <div class="p-6 border-b border-border-color bg-surface-container-lowest flex justify-between items-center">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-500">
+                                        <span class="material-symbols-outlined">table_rows</span>
+                                    </div>
+                                    <h2 class="font-bold text-lg font-headline text-on-surface">Data Detail Tiket FFG</h2>
+                                </div>
+                                <span id="ffgCountLabel" class="px-3 py-1 bg-surface-container-high rounded-lg text-xs font-bold text-on-surface">0 Tiket</span>
+                            </div>
+                            <div class="overflow-x-auto w-full flex-1 max-h-[330px] overflow-y-auto">
+                                <table class="w-full text-left text-sm text-on-surface-variant">
+                                    <thead class="bg-surface-container-low text-[11px] uppercase font-bold text-on-surface tracking-wider border-b border-border-color sticky top-0 z-10">
+                                        <tr>
+                                            <th class="px-4 py-3">NO TIKET</th>
+                                            <th class="px-4 py-3">TEKNISI / AREA</th>
+                                            <th class="px-4 py-3">RCA</th>
+                                            <th class="px-4 py-3 max-w-[400px]">CATATAN</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-border-color" id="ffgTableBody">
+                                        <!-- content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Detail -->
+    <div id="detailModal" class="fixed inset-0 z-[100] hidden" aria-labelledby="modal-title" role="dialog">
+        <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity" id="modalOverlay"></div>
+        <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-3xl bg-surface-container-lowest text-left shadow-2xl transition-all w-full max-w-[95vw] lg:max-w-6xl max-h-[90vh] flex flex-col border border-border-color">
+                    <div class="px-6 py-5 border-b border-border-color bg-surface-container-low flex justify-between items-center gap-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                                <span class="material-symbols-outlined">receipt_long</span>
+                            </div>
+                            <div>
+                                <h3 id="modalTitle" class="text-lg font-bold font-headline text-on-surface">Detail Tiket</h3>
+                            </div>
+                        </div>
+                        <button id="closeModalBtn" class="rounded-full w-10 h-10 flex items-center justify-center bg-surface-container hover:bg-surface-container-highest transition-colors text-on-surface-variant">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="flex-1 overflow-x-auto p-0">
+                        <table class="w-full text-left text-sm text-on-surface-variant" id="detailTable">
+                            <thead class="bg-surface-container-low text-xs uppercase font-extrabold text-on-surface sticky top-0 z-10 shadow-sm"></thead>
+                            <tbody class="divide-y divide-border-color"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Chart.js -->
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script is:inline src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    
+    <script is:inline>
+        // Global variables
+        let currentData = null;
+        let barChart, pieChart, trendChart, ffgPieChart, ffgBarChart;
+
+        // DOM elements
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        const dateRangeLabel = document.getElementById('dateRangeLabel');
+        const statsCards = document.getElementById('statsCards');
+        const topTeknisiList = document.getElementById('topTeknisiList');
+        const areaAvgList = document.getElementById('areaAvgList');
+        const jenisTable = document.getElementById('jenisTable');
+        const jenisTableFoot = document.getElementById('jenisTableFoot');
+        const timeslotTable = document.getElementById('timeslotTable');
+        const timeslotTableFoot = document.getElementById('timeslotTableFoot');
+        const modal = document.getElementById('detailModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const detailTable = document.querySelector('#detailTable');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const modalOverlay = document.getElementById('modalOverlay');
+        const ffgTableBody = document.getElementById('ffgTableBody');
+        const ffgCountLabel = document.getElementById('ffgCountLabel');
+
+        function closeModal() { modal.classList.add('hidden'); }
+        function openModal() { modal.classList.remove('hidden'); }
+        if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+        if (modalOverlay) modalOverlay.addEventListener('click', closeModal);
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('id-ID');
+        }
+
+        async function fetchReport(start_date, end_date) {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const dashboardContent = document.getElementById('dashboardContent');
+            
+            try {
+                if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+                if (dashboardContent) dashboardContent.classList.add('opacity-50', 'pointer-events-none');
+                
+                const res = await fetch(`/api/report?start_date=${start_date}&end_date=${end_date}`);
+                const json = await res.json();
+                
+                if (json.status === 'success') {
+                    currentData = json;
+                    renderStats(json);
+                    renderTopTeknisi(json);
+                    renderAreaAvg(json);
+                    renderJenisTable(json);
+                    renderTimeslotTable(json);
+                    renderCharts(json);
+                    renderFfgSection(json);
+                    dateRangeLabel.innerText = `${formatDate(json.start_date)} - ${formatDate(json.end_date)}`;
+                } else {
+                    console.error('API error:', json.message);
+                    statsCards.innerHTML = `<div class="col-span-4 p-4 bg-error/10 text-error rounded-2xl border border-error/20 font-bold text-center">${json.message}</div>`;
+                }
+            } catch (err) {
+                console.error('Fetch error:', err);
+                statsCards.innerHTML = `<div class="col-span-4 p-4 bg-error/10 text-error rounded-2xl border border-error/20 font-bold text-center">Gagal mengambil data: ${err.message}</div>`;
+            } finally {
+                if (loadingOverlay) loadingOverlay.classList.add('hidden');
+                if (dashboardContent) dashboardContent.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        function renderStats(data) {
+            const stats = [
+                { label: 'Total Tiket Closed', value: data.grandTotalAll, icon: 'task_alt', color: 'text-primary', bg: 'bg-primary/10' },
+                { label: 'Teknisi Aktif', value: data.totalTeknisiGlobal, icon: 'badge', color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Jam Tersibuk', value: `${data.peakHour}:00`, icon: 'bolt', color: 'text-amber-500', bg: 'bg-amber-500/10', sub: `${data.peakCount} tiket` },
+                { label: 'Rata²/Teknisi', value: data.rataPerTeknisiGlobal.toFixed(1), icon: 'person_celebrate', color: 'text-purple-500', bg: 'bg-purple-500/10' }
+            ];
+
+            statsCards.innerHTML = stats.map(s => `
+                <div class="bg-surface-container-lowest p-6 rounded-3xl border border-border-color shadow-sm flex items-center gap-5 group hover:border-primary/30 transition-all">
+                    <div class="w-14 h-14 rounded-2xl ${s.bg} flex items-center justify-center ${s.color} transition-transform group-hover:scale-110">
+                        <span class="material-symbols-outlined text-[32px]">${s.icon}</span>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-1">${s.label}</p>
+                        <div class="flex items-baseline gap-2">
+                            <h3 class="text-3xl font-black font-headline text-on-surface">${s.value}</h3>
+                            ${s.sub ? `<span class="text-[10px] font-bold text-on-surface-variant">${s.sub}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderTopTeknisi(data) {
+            if (!data.topTeknisi.length) {
+                topTeknisiList.innerHTML = '<li class="text-on-surface-variant/50 text-sm italic py-4 text-center">Tidak ada data</li>';
+                return;
+            }
+            topTeknisiList.innerHTML = data.topTeknisi.map((t, idx) => `
+                <li class="flex justify-between items-center p-3 rounded-2xl bg-surface-container-low/50 border border-border-color/30 group hover:bg-surface-container-low transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg ${idx === 0 ? 'bg-amber-500 text-white' : 'bg-surface-container-highest text-on-surface'} flex items-center justify-center font-black text-xs shadow-sm">
+                            ${idx + 1}
+                        </div>
+                        <div>
+                            <p class="font-bold text-sm text-on-surface">${t.nama}</p>
+                            <p class="text-[10px] font-medium text-on-surface-variant">${t.nik}</p>
+                        </div>
+                    </div>
+                    <div class="px-3 py-1 rounded-full bg-primary/10 text-primary text-[11px] font-black uppercase tracking-tighter shadow-sm">
+                        ${t.total} Tiket
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        function renderAreaAvg(data) {
+            const sorted = Object.entries(data.areaAvg).sort((a,b) => b[1] - a[1]);
+            if (!sorted.length) {
+                areaAvgList.innerHTML = '<li class="text-on-surface-variant/50 text-sm italic py-4 text-center">Tidak ada data</li>';
+                return;
+            }
+            areaAvgList.innerHTML = sorted.map(([area, avg], idx) => `
+                <li class="flex justify-between items-center p-3 rounded-2xl bg-surface-container-low/50 border border-border-color/30 group hover:bg-surface-container-low transition-all">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center transition-transform group-hover:rotate-12">
+                            <span class="material-symbols-outlined text-[18px]">location_on</span>
+                        </div>
+                        <p class="font-bold text-sm text-on-surface">${area}</p>
+                    </div>
+                    <div class="flex flex-col items-end">
+                        <p class="text-xs font-black text-on-surface">${avg.toFixed(1)}</p>
+                        <p class="text-[8px] font-bold text-on-surface-variant uppercase tracking-widest">Tiket/Teknisi</p>
+                    </div>
+                </li>
+            `).join('');
+        }
+
+        // Fungsi untuk mengikat event expand/collapse pada semua .area-total-row
+        function bindExpandEvents() {
+            // Hapus listener lama untuk menghindari duplikasi, kita akan pakai event delegation saja, tapi lebih aman jika kita attach langsung ke setiap row setelah render.
+            // Namun karena tabel bisa di-render ulang, kita gunakan event delegation dari body.
+            // Tidak perlu melakukan apapun di sini karena event listener sudah dipasang di body secara permanen.
+        }
+
+        function renderJenisTable(data) {
+            const activeJenis = data.activeJenisList;
+            if (!activeJenis.length) {
+                const oldBodies = jenisTable.querySelectorAll('tbody');
+                oldBodies.forEach(b => b.remove());
+                jenisTableFoot.insertAdjacentHTML('beforebegin', '<tbody><tr><td colspan="10" class="text-center py-12 text-on-surface-variant font-medium">Tidak ada data tiket masuk</td></tr></tbody>');
+                return;
+            }
+            
+            // Modern Header
+            let headerHtml = `<tr>
+                <th class="px-6 py-4 font-black">AREA / TEKNISI</th>
+                ${activeJenis.map(j => `<th class="px-3 py-4 text-center font-black">${j}</th>`).join('')}
+                <th class="px-6 py-4 text-right font-black">TOTAL</th>
+            </tr>`;
+            document.querySelector('#jenisTable thead').innerHTML = headerHtml;
+
+            let bodyHtml = '';
+            for (const area of data.allowedAreas) {
+                const areaTotal = data.totalPerArea[area] || {};
+                const grandTotalArea = Object.values(areaTotal).reduce((a,b)=>a+b,0);
+                
+                bodyHtml += `<tbody class="area-group group/area" data-expanded="false">
+                    <tr class="area-total-row cursor-pointer bg-surface-container-low/30 hover:bg-surface-container-low transition-colors border-b border-border-color">
+                        <td class="px-6 py-4 font-black text-on-surface flex items-center gap-3">
+                            <div class="w-6 h-6 rounded-md bg-primary text-on-primary flex items-center justify-center toggle-icon-box shadow-sm transition-transform">
+                                <span class="material-symbols-outlined text-[16px] toggle-icon">chevron_right</span>
+                            </div>
+                            <span class="tracking-tight">${area}</span>
+                        </td>`;
+                
+                activeJenis.forEach(j => {
+                    const count = areaTotal[j] || 0;
+                    if (count) {
+                        const detailTickets = data.areaDetailData[area]?.[j] || [];
+                        const detailJson = JSON.stringify(detailTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        bodyHtml += `<td class="text-center px-3">
+                            <button class="clickable-number w-10 h-10 rounded-xl hover:bg-primary/10 text-primary font-black transition-all flex items-center justify-center mx-auto" data-detail='${detailJson}' data-area="${area}" data-jenis="${j}" data-teknisi="SEMUA TEKNISI">
+                                ${count}
+                            </button>
+                        </td>`;
+                    } else {
+                        bodyHtml += '<td class="text-center px-3 text-on-surface-variant/20 font-medium">-</td>';
+                    }
+                });
+
+                if (grandTotalArea) {
+                    const allAreaTickets = data.allTicketsGlobal.filter(t => t.service_area === area);
+                    const allJson = JSON.stringify(allAreaTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    bodyHtml += `<td class="text-right px-6">
+                        <button class="clickable-number px-4 py-2 rounded-xl bg-primary text-on-primary font-black shadow-sm hover:scale-105 transition-all text-xs" data-detail='${allJson}' data-area="${area}" data-jenis="SEMUA JENIS" data-teknisi="SEMUA TEKNISI">
+                            ${grandTotalArea}
+                        </button>
+                    </td>`;
+                } else {
+                    bodyHtml += '<td class="text-right px-6 text-on-surface-variant/20 font-medium">-</td>';
+                }
+                bodyHtml += '</tr>';
+
+                // Modern Teknisi Rows
+                const teknisiGroup = data.data[area] || {};
+                for (const key in teknisiGroup) {
+                    const tek = teknisiGroup[key];
+                    const totalTek = Object.values(tek.counts).reduce((a,b)=>a+b,0);
+                    const tekLabel = `${tek.nik} - ${tek.nama}`;
+                    let allTekTickets = [];
+                    activeJenis.forEach(j => {
+                        if (data.detailData[area]?.[key]?.[j]) allTekTickets.push(...data.detailData[area][key][j]);
+                    });
+
+                    bodyHtml += `<tr class="teknisi-row hidden bg-surface-container-lowest/50 hover:bg-surface-container-lowest transition-colors border-b border-border-color/30">
+                        <td class="px-6 py-3 pl-16">
+                            <div class="flex flex-col">
+                                <span class="font-bold text-on-surface text-sm">${tek.nama}</span>
+                                <span class="text-[10px] font-medium text-on-surface-variant">${tek.nik} • ${tek.posisi || 'N/A'}</span>
+                            </div>
+                        </td>`;
+                    
+                    activeJenis.forEach(j => {
+                        const count = tek.counts[j] || 0;
+                        if (count) {
+                            const detailTickets = data.detailData[area]?.[key]?.[j] || [];
+                            const detailJson = JSON.stringify(detailTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                            bodyHtml += `<td class="text-center px-3">
+                                <button class="clickable-number w-8 h-8 rounded-lg hover:bg-primary/5 text-on-surface font-bold text-xs transition-all flex items-center justify-center mx-auto border border-border-color/50 shadow-sm" data-detail='${detailJson}' data-area="${area}" data-jenis="${j}" data-teknisi="${tekLabel}">
+                                    ${count}
+                                </button>
+                            </td>`;
+                        } else {
+                            bodyHtml += '<td class="text-center px-3 text-on-surface-variant/10 text-xs">-</td>';
+                        }
+                    });
+
+                    if (totalTek) {
+                        const allJson = JSON.stringify(allTekTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        bodyHtml += `<td class="text-right px-6">
+                            <button class="clickable-number px-3 py-1.5 rounded-lg border border-primary/20 text-primary font-black text-[10px] hover:bg-primary hover:text-on-primary transition-all shadow-sm uppercase tracking-tighter" data-detail='${allJson}' data-area="${area}" data-jenis="SEMUA JENIS" data-teknisi="${tekLabel}">
+                                ${totalTek} Total
+                            </button>
+                        </td>`;
+                    } else {
+                        bodyHtml += '<td class="text-right px-6">-</td>';
+                    }
+                    bodyHtml += '</tr>';
+                }
+                bodyHtml += '</tbody>';
+            }
+
+            // Modern Footer
+            let footHtml = `<tr class="bg-surface-container-highest text-on-surface border-t-2 border-primary">
+                <td class="px-6 py-5 font-black text-xs uppercase tracking-widest">Grand Total Nasional</td>
+                ${activeJenis.map(j => {
+                    const count = data.grandTotalDisplay[j] || 0;
+                    if (count) {
+                        const detailGlobal = data.areaDetailData ? Object.values(data.areaDetailData).flatMap(a => a[j] || []) : [];
+                        const detailJson = JSON.stringify(detailGlobal).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        return `<td class="text-center px-3 font-black">
+                            <button class="clickable-number p-2 rounded-xl bg-white/50 hover:bg-white text-primary transition-all border border-primary/20 shadow-sm mx-auto min-w-[36px]" data-detail='${detailJson}' data-area="NASIONAL" data-jenis="${j}" data-teknisi="GLOBAL">
+                                ${count}
+                            </button>
+                        </td>`;
+                    }
+                    return '<td class="text-center px-3 text-on-surface-variant/30">-</td>';
+                }).join('')}
+                <td class="text-right px-6">
+                    <button class="clickable-number px-5 py-3 rounded-2xl bg-primary text-on-primary font-black shadow-lg hover:scale-105 transition-all text-sm" data-detail='${JSON.stringify(data.allTicketsGlobal).replace(/\\/g, '\\\\').replace(/'/g, "\\")}' data-area="NASIONAL" data-jenis="GLOBAL" data-teknisi="GLOBAL">
+                        ${data.grandTotalAll}
+                    </button>
+                </td>
+            </tr>`;
+            // Clean existing tbody before injecting
+            const oldBodies = jenisTable.querySelectorAll('tbody');
+            oldBodies.forEach(b => b.remove());
+            
+            // Inject new tbody tags before tfoot
+            jenisTableFoot.insertAdjacentHTML('beforebegin', bodyHtml);
+            jenisTableFoot.innerHTML = footHtml;
+        }
+
+        function renderTimeslotTable(data) {
+            const jamList = data.jamList;
+            if (!jamList.length) {
+                const oldBodies = timeslotTable.querySelectorAll('tbody');
+                oldBodies.forEach(b => b.remove());
+                timeslotTableFoot.insertAdjacentHTML('beforebegin', '<tbody><tr><td colspan="20" class="text-center py-12 text-on-surface-variant font-medium">Data jam tidak tersedia</td></tr></tbody>');
+                return;
+            }
+            
+            let headerHtml = `<tr>
+                <th class="px-6 py-4 font-black">AREA / TEKNISI</th>
+                ${jamList.map(j => `<th class="px-3 py-4 text-center font-black">${j}</th>`).join('')}
+                <th class="px-6 py-4 text-right font-black">TOTAL</th>
+            </tr>`;
+            document.querySelector('#timeslotTable thead').innerHTML = headerHtml;
+
+            let bodyHtml = '';
+            for (const area of data.allowedAreas) {
+                const areaTotal = data.totalPerAreaTimeslot[area] || {};
+                const grandTotalArea = Object.values(areaTotal).reduce((a,b)=>a+b,0);
+
+                bodyHtml += `<tbody class="area-group group/area" data-expanded="false">
+                    <tr class="area-total-row cursor-pointer bg-surface-container-low/30 hover:bg-surface-container-low transition-colors border-b border-border-color">
+                        <td class="px-6 py-4 font-black text-on-surface flex items-center gap-3">
+                            <div class="w-6 h-6 rounded-md bg-orange-500 text-white flex items-center justify-center toggle-icon-box shadow-sm transition-transform">
+                                <span class="material-symbols-outlined text-[16px] toggle-icon">chevron_right</span>
+                            </div>
+                            <span class="tracking-tight">${area}</span>
+                        </td>`;
+                
+                jamList.forEach(j => {
+                    const count = areaTotal[j] || 0;
+                    if (count) {
+                        const detailTickets = data.areaDetailDataTimeslot[area]?.[j] || [];
+                        const detailJson = JSON.stringify(detailTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        bodyHtml += `<td class="text-center px-3">
+                            <button class="clickable-number w-9 h-9 rounded-xl hover:bg-orange-500/10 text-orange-600 font-black transition-all flex items-center justify-center mx-auto text-xs" data-detail='${detailJson}' data-area="${area}" data-jam="${j}" data-teknisi="SEMUA TEKNISI">
+                                ${count}
+                            </button>
+                        </td>`;
+                    } else {
+                        bodyHtml += '<td class="text-center px-3 text-on-surface-variant/20 font-medium text-xs">-</td>';
+                    }
+                });
+
+                if (grandTotalArea) {
+                    const allAreaTickets = data.allTicketsGlobalTimeslot.filter(t => t.service_area === area);
+                    const allJson = JSON.stringify(allAreaTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    bodyHtml += `<td class="text-right px-6">
+                        <button class="clickable-number px-4 py-2 rounded-xl bg-orange-500 text-white font-black shadow-sm hover:scale-105 transition-all text-[10px]" data-detail='${allJson}' data-area="${area}" data-jam="SEMUA JAM" data-teknisi="SEMUA TEKNISI">
+                            ${grandTotalArea}
+                        </button>
+                    </td>`;
+                } else {
+                    bodyHtml += '<td class="text-right px-6 text-on-surface-variant/20 font-medium">-</td>';
+                }
+                bodyHtml += '</tr>';
+
+                const teknisiGroup = data.dataTimeslot[area] || {};
+                for (const key in teknisiGroup) {
+                    const tek = teknisiGroup[key];
+                    const totalTek = Object.values(tek.counts).reduce((a,b)=>a+b,0);
+                    const tekLabel = `${tek.nik} - ${tek.nama}`;
+                    let allTekTickets = [];
+                    jamList.forEach(j => {
+                        if (data.detailDataTimeslot[area]?.[key]?.[j]) allTekTickets.push(...data.detailDataTimeslot[area][key][j]);
+                    });
+
+                    bodyHtml += `<tr class="teknisi-row hidden bg-surface-container-lowest/50 hover:bg-surface-container-lowest transition-colors border-b border-border-color/30">
+                        <td class="px-6 py-3 pl-16">
+                            <div class="flex flex-col">
+                                <span class="font-bold text-on-surface text-sm">${tek.nama}</span>
+                                <span class="text-[9px] font-medium text-on-surface-variant uppercase tracking-wide">${tek.nik}</span>
+                            </div>
+                        </td>`;
+                    
+                    jamList.forEach(j => {
+                        const count = tek.counts[j] || 0;
+                        if (count) {
+                            const detailTickets = data.detailDataTimeslot[area]?.[key]?.[j] || [];
+                            const detailJson = JSON.stringify(detailTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                            bodyHtml += `<td class="text-center px-3">
+                                <button class="clickable-number w-7 h-7 rounded-lg hover:bg-orange-500/5 text-on-surface font-bold text-[10px] transition-all flex items-center justify-center mx-auto border border-border-color/50" data-detail='${detailJson}' data-area="${area}" data-jam="${j}" data-teknisi="${tekLabel}">
+                                    ${count}
+                                </button>
+                            </td>`;
+                        } else {
+                            bodyHtml += '<td class="text-center px-3 text-on-surface-variant/5 text-[10px]">-</td>';
+                        }
+                    });
+
+                    if (totalTek) {
+                        const allJson = JSON.stringify(allTekTickets).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        bodyHtml += `<td class="text-right px-6">
+                            <button class="clickable-number px-3 py-1 rounded-lg border border-orange-500/20 text-orange-600 font-bold text-[9px] hover:bg-orange-500 hover:text-white transition-all" data-detail='${allJson}' data-area="${area}" data-jam="SEMUA JAM" data-teknisi="${tekLabel}">
+                                ${totalTek}
+                            </button>
+                        </td>`;
+                    } else {
+                        bodyHtml += '<td class="text-right px-6">-</td>';
+                    }
+                    bodyHtml += '</tr>';
+                }
+                bodyHtml += '</tbody>';
+            }
+
+            let footHtml = `<tr class="bg-surface-container-highest text-on-surface border-t-2 border-orange-500">
+                <td class="px-6 py-5 font-black text-xs uppercase tracking-widest">Total Per Jam Nasional</td>
+                ${jamList.map(j => {
+                    const count = data.grandTotalJam[j] || 0;
+                    if (count) {
+                        const detailGlobal = data.areaDetailDataTimeslot ? Object.values(data.areaDetailDataTimeslot).flatMap(a => a[j] || []) : [];
+                        const detailJson = JSON.stringify(detailGlobal).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        return `<td class="text-center px-3 font-black">
+                            <button class="clickable-number p-2 rounded-xl bg-orange-500/10 hover:bg-orange-500 text-orange-700 hover:text-white transition-all border border-orange-500/20 shadow-sm mx-auto text-xs" data-detail='${detailJson}' data-area="NASIONAL" data-jam="${j}" data-teknisi="GLOBAL">
+                                ${count}
+                            </button>
+                        </td>`;
+                    }
+                    return '<td class="text-center px-3 text-on-surface-variant/30">-</td>';
+                }).join('')}
+                <td class="text-right px-6">
+                    <button class="clickable-number px-5 py-3 rounded-2xl bg-orange-500 text-white font-black shadow-lg hover:scale-105 transition-all text-sm" data-detail='${JSON.stringify(data.allTicketsGlobalTimeslot || []).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' data-area="NASIONAL" data-jam="GLOBAL" data-teknisi="GLOBAL">
+                        ${data.grandTotalAllTimeslot || 0}
+                    </button>
+                </td>
+            </tr>`;
+            // Clean existing tbody before injecting
+            const oldBodies = timeslotTable.querySelectorAll('tbody');
+            oldBodies.forEach(b => b.remove());
+            
+            // Inject new tbody tags before tfoot
+            timeslotTableFoot.insertAdjacentHTML('beforebegin', bodyHtml);
+            timeslotTableFoot.innerHTML = footHtml;
+        }
+
+        // Event delegation for expand/collapse (modern version)
+        document.body.addEventListener('click', function(e) {
+            const row = e.target.closest('.area-total-row');
+            if (!row) return;
+            
+            // Skip modal trigger clicks
+            if (e.target.closest('.clickable-number')) return;
+            
+            const tbody = row.closest('.area-group');
+            if (!tbody) return;
+            
+            e.preventDefault();
+            const isExpanded = tbody.classList.toggle('expanded');
+            console.log('Toggling area:', row.innerText.trim(), 'Expanded:', isExpanded);
+            
+            const icon = row.querySelector('.toggle-icon');
+            const iconBox = row.querySelector('.toggle-icon-box');
+            
+            if (icon) {
+                icon.textContent = isExpanded ? 'expand_more' : 'chevron_right';
+            }
+            if (iconBox) {
+                if (isExpanded) {
+                    iconBox.classList.add('rotate-90', 'bg-amber-500', 'text-white');
+                    iconBox.classList.remove('bg-primary', 'bg-orange-500');
+                } else {
+                    iconBox.classList.remove('rotate-90', 'bg-amber-500', 'text-white');
+                    // Restore original color based on section
+                    if (tbody.closest('#jenisTable')) iconBox.classList.add('bg-primary');
+                    if (tbody.closest('#timeslotTable')) iconBox.classList.add('bg-orange-500');
+                }
+            }
+            
+            const teknisiRows = tbody.querySelectorAll('.teknisi-row');
+            teknisiRows.forEach(r => {
+                if (isExpanded) {
+                    r.classList.remove('hidden');
+                    r.style.display = 'table-row'; // Force display style just in case hidden conflict
+                } else {
+                    r.classList.add('hidden');
+                    r.style.display = 'none';
+                }
+            });
+        });
+
+        function renderCharts(data) {
+            if (typeof Chart === 'undefined') {
+                setTimeout(() => renderCharts(data), 200);
+                return;
+            }
+            const barCtx = document.getElementById('barChart')?.getContext('2d');
+            if (barCtx) {
+                if (barChart) barChart.destroy();
+                barChart = new Chart(barCtx, {
+                    type: 'bar',
+                    data: { 
+                        labels: data.areaNames, 
+                        datasets: [{ 
+                            label: 'Tiket Closed', 
+                            data: data.areaTotals, 
+                            backgroundColor: '#0061A4',
+                            borderRadius: 12,
+                            borderSkipped: false,
+                            barThickness: 32
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: false },
+                            datalabels: { anchor: 'end', align: 'top', font: { weight: 'bold', size: 10 }, formatter: (v) => v } 
+                        },
+                        scales: {
+                            y: { beginAtZero: true, grid: { display: false }, border: { display: false } },
+                            x: { grid: { display: false }, border: { display: false }, ticks: { font: { weight: 'bold', size: 10 } } }
+                        }
+                    }
+                });
+            }
+            const pieCtx = document.getElementById('pieChart')?.getContext('2d');
+            if (pieCtx) {
+                if (pieChart) pieChart.destroy();
+                pieChart = new Chart(pieCtx, {
+                    type: 'doughnut',
+                    data: { 
+                        labels: data.jenisNames, 
+                        datasets: [{ 
+                            data: data.jenisValues, 
+                            backgroundColor: ['#0061A4', '#D1E4FF', '#FFB4AB', '#BA1A1A', '#415F91', '#8F909A'],
+                            borderWidth: 0,
+                            cutout: '70%'
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { position: 'bottom', labels: { usePointStyle: true, font: { weight: 'bold', size: 10 } } },
+                            datalabels: { color: '#fff', font: { weight: 'bold' }, formatter: (v) => v > 0 ? v : '' } 
+                        } 
+                    }
+                });
+            }
+            const trendCtx = document.getElementById('trendChart')?.getContext('2d');
+            if (trendCtx) {
+                if (trendChart) trendChart.destroy();
+                const gradient = trendCtx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(0, 97, 164, 0.2)');
+                gradient.addColorStop(1, 'rgba(0, 97, 164, 0)');
+                
+                trendChart = new Chart(trendCtx, {
+                    type: 'line',
+                    data: { 
+                        labels: data.jamList || [], 
+                        datasets: [{ 
+                            label: 'Tiket Closed', 
+                            data: Object.values(data.grandTotalJam || {}), 
+                            borderColor: '#0061A4', 
+                            borderWidth: 3,
+                            fill: true, 
+                            backgroundColor: gradient,
+                            tension: 0.4,
+                            pointBackgroundColor: '#0061A4',
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: false },
+                            datalabels: { align: 'top', offset: 8, font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v : '' } 
+                        },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+            }
+        }
+
+        function renderFfgSection(data) {
+            const ffgT = data.ffgTickets || [];
+            ffgCountLabel.innerText = `${ffgT.length} Tiket`;
+            
+            if (!ffgT.length) {
+                ffgTableBody.innerHTML = '<tr><td colspan="4" class="text-center p-8 text-on-surface-variant italic">Tidak ada data tiket FFG</td></tr>';
+            } else {
+                ffgTableBody.innerHTML = ffgT.map(t => `
+                    <tr class="hover:bg-surface-container-low transition-colors">
+                        <td class="px-4 py-3 font-black text-primary">${t.no_tiket || '-'}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex flex-col">
+                                <span class="font-bold text-on-surface text-sm">${t.nama_teknisi}</span>
+                                <span class="text-[10px] font-medium text-on-surface-variant uppercase">${t.service_area}</span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3"><span class="px-2 py-1 bg-rose-500/10 text-rose-600 rounded text-xs font-bold">${t.rca || 'Tanpa Keterangan'}</span></td>
+                        <td class="px-4 py-3 text-xs text-on-surface-variant max-w-[200px] truncate" title="${t.catatan || ''}">${t.catatan || '-'}</td>
+                    </tr>
+                `).join('');
+            }
+
+            const ffgCtx = document.getElementById('ffgPieChart')?.getContext('2d');
+            if (ffgCtx && data.ffgRcaCounts) {
+                if (ffgPieChart) ffgPieChart.destroy();
+                const labels = Object.keys(data.ffgRcaCounts);
+                const values = Object.values(data.ffgRcaCounts);
+                const colors = ['#f43f5e', '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1', '#3b82f6'];
+                
+                ffgPieChart = new Chart(ffgCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: colors,
+                            borderWidth: 0,
+                            cutout: '70%'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { usePointStyle: true, font: { weight: 'bold', size: 10 } } },
+                            datalabels: { color: '#fff', font: { weight: 'bold' }, formatter: (v) => v > 0 ? v : '' }
+                        }
+                    }
+                });
+            }
+
+            const ffgBarCtx = document.getElementById('ffgBarChart')?.getContext('2d');
+            if (ffgBarCtx && data.ffgAreaCounts) {
+                if (ffgBarChart) ffgBarChart.destroy();
+                const areaNames = data.allowedAreas || [];
+                const areaTotals = areaNames.map(a => data.ffgAreaCounts[a] || 0);
+
+                ffgBarChart = new Chart(ffgBarCtx, {
+                    type: 'bar',
+                    data: { 
+                        labels: areaNames, 
+                        datasets: [{ 
+                            label: 'Tiket FFG', 
+                            data: areaTotals, 
+                            backgroundColor: '#7cb5ec',
+                            borderRadius: 6,
+                            barThickness: 32
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { display: false },
+                            datalabels: { anchor: 'end', align: 'top', font: { weight: 'bold', size: 10 }, formatter: (v) => v > 0 ? v : '' } 
+                        },
+                        scales: {
+                            y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                            x: { grid: { display: false }, ticks: { font: { weight: 'bold', size: 9 }, maxRotation: 15, minRotation: 15 } }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Modal detail modern click handler
+        document.body.addEventListener('click', (e) => {
+            const target = e.target.closest('.clickable-number');
+            if (!target) return;
+            
+            const detailJson = target.getAttribute('data-detail');
+            const area = target.getAttribute('data-area');
+            const jenis = target.getAttribute('data-jenis');
+            const jam = target.getAttribute('data-jam');
+            const teknisi = target.getAttribute('data-teknisi');
+            
+            if (!detailJson) return;
+            const tickets = JSON.parse(detailJson);
+            
+            let title = `${area} • ${teknisi}`;
+            if (jenis && jenis !== 'SEMUA JENIS') title += ` • ${jenis}`;
+            if (jam && jam !== 'SEMUA JAM') title += ` • Jam ${jam}:00`;
+            modalTitle.innerText = title;
+
+            const thead = detailTable.querySelector('thead');
+            const tbody = detailTable.querySelector('tbody');
+            
+            if (tickets.length > 0) {
+                const cols = [
+                    { label: 'NO TIKET', key: 'no_tiket' },
+                    { label: 'NO INET', key: 'no_inet' },
+                    { label: 'JENIS', key: 'jenis' },
+                    { label: 'JAM CLOSE', key: 'jam_close' },
+                    { label: 'RCA', key: 'rca' },
+                    { label: 'CATATAN', key: 'catatan' },
+                    { label: 'ODP', key: 'odp' }
+                ];
+
+                thead.innerHTML = `<tr>${cols.map(c => `<th class="px-6 py-4">${c.label}</th>`).join('')}</tr>`;
+                tbody.innerHTML = tickets.map(t => `
+                    <tr class="hover:bg-surface-container-low transition-colors">
+                        <td class="px-6 py-4"><span class="font-black text-primary">${t.no_tiket || '-'}</span></td>
+                        <td class="px-6 py-4 font-bold">${t.no_inet || '-'}</td>
+                        <td class="px-6 py-4"><span class="px-2 py-1 rounded-md bg-surface-container-high text-[10px] font-black uppercase">${t.jenis || '-'}</span></td>
+                        <td class="px-6 py-4 text-xs font-bold">${t.jam_close ? new Date(t.jam_close).toLocaleTimeString('id-ID') : '-'}</td>
+                        <td class="px-6 py-4 text-xs font-medium">${t.rca || '-'}</td>
+                        <td class="px-6 py-4 text-xs text-on-surface-variant max-w-[200px] truncate" title="${t.catatan || ''}">${t.catatan || '-'}</td>
+                        <td class="px-6 py-4 text-[10px] font-mono">${t.odp || '-'}</td>
+                    </tr>
+                `).join('');
+            } else {
+                thead.innerHTML = '<tr><th class="p-4">Info</th></tr>';
+                tbody.innerHTML = '<tr><td class="p-12 text-center text-on-surface-variant italic">Data detail tidak ditemukan</td></tr>';
+            }
+            openModal();
+        });
+
+        // Form filter init
+        const today = new Date().toISOString().split('T')[0];
+        if (!startDateInput.value) startDateInput.value = today;
+        if (!endDateInput.value) endDateInput.value = today;
+
+        document.getElementById('dateFilterForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            fetchReport(startDateInput.value, endDateInput.value);
+        });
+        
+        document.getElementById('todayBtn').addEventListener('click', () => {
+            startDateInput.value = today;
+            endDateInput.value = today;
+            fetchReport(today, today);
+        });
+        
+        // Initial Load
+        fetchReport(startDateInput.value, endDateInput.value);
+    </script>
+</Layout>

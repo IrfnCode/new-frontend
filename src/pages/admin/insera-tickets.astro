@@ -1,0 +1,3129 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { InseraModel } from "../../lib/models/InseraModel";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+// Guard: hanya ADMIN, KORLAP, HSA, HD/HELPDESK yang boleh akses halaman ini
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/tickets");
+}
+
+const isAdmin     = role === "ADMIN";
+const isKorlapHsa = role === "KORLAP" || role === "HSA" || role === "HD KORLAP";
+const isHelpdesk  = role === "HELPDESK" || role === "HD";
+
+// Fetch initial data directly from MySQL server-side
+let initialWorkOrders = [];
+let dbError = null;
+let dbDiagnostics = { total: 0, status: 'Checking...' };
+
+try {
+    const rawOrders = await InseraModel.getAll();
+    dbDiagnostics = await InseraModel.getDiagnostics();
+    
+    console.log("[SSR] rawOrders count:", rawOrders?.length || 0);
+    console.log("[SSR] dbDiagnostics:", dbDiagnostics);
+    
+    initialWorkOrders = (rawOrders || []).map((wo: any) => {
+        const item = { ...wo };
+        // Handle BigInt conversion for both snake_case and camelCase
+        ['id', 'order_id', 'orderId'].forEach(key => {
+            if (typeof item[key] === 'bigint') item[key] = item[key].toString();
+        });
+        return item;
+    });
+    
+    console.log("[SSR] initialWorkOrders count:", initialWorkOrders.length);
+} catch (err) {
+    dbError = err.message;
+    console.error("SSR Database Error:", err.message);
+}
+
+const PUBLIC_BACKEND_URL = import.meta.env.PUBLIC_BACKEND_URL;
+---
+
+
+<Layout title="MORENA Admin - Data Tiket INSERA">
+    <meta name="current-user" content={username} />
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="insera-tickets" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)] overflow-x-hidden">
+            <!-- Database Diagnostics Banner -->
+            <div class="px-8 py-2 bg-surface-container-high border-b border-border-color flex items-center justify-between text-[10px] font-bold tracking-wider uppercase">
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-on-surface-variant">DB Status:</span>
+                        <span class={dbError ? "text-error" : "text-emerald-500"}>
+                            {dbError ? "Error / Disconnected" : "Connected (127.0.0.1)"}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-on-surface-variant">Table Source:</span>
+                        <span class="text-primary">scraped_work_orders</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 ml-2 border-l border-border-color pl-4">
+                        <span class="text-on-surface-variant">Total Records Found (DB):</span>
+                        <span class="text-emerald-500 font-black underline">{dbDiagnostics.total}</span>
+                    </div>
+                </div>
+                {dbError && (
+                    <div class="text-error bg-error/10 px-2 py-0.5 rounded border border-error/20 flex items-center gap-2 normal-case font-mono">
+                        <span class="material-symbols-outlined text-[12px]">warning</span>
+                        {dbError}
+                    </div>
+                )}
+            </div>
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-8">
+                    <h2 class="text-xl font-extrabold text-primary font-headline tracking-tight">Data Tiket INSERA</h2>
+                    <div class="flex items-center gap-2 text-on-surface-variant">
+                        <span class="material-symbols-outlined text-sm">sync</span>
+                        <p id="syncStatus" class="text-sm font-bold">
+                            Tarik Data: <span class="text-emerald-500">Manual</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button onclick="window.toggleTheme()" class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant">
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                    <button class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant relative">
+                        <span class="material-symbols-outlined">notifications</span>
+                        <span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+                    </button>
+                    <button id="addManual" class="ml-2 bg-primary hover:opacity-90 text-white px-5 py-2 rounded-full font-bold flex items-center gap-2 shadow-lg shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-sm">add_circle</span>
+                        <span>Add Manual</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-6">
+                <!-- Actions Bar -->
+                <div class="flex flex-wrap gap-3 justify-end items-center">
+                    <!-- Column Picker -->
+                    <div class="relative" id="colPickerWrapper">
+                        <button id="colPickerBtn" class="flex items-center gap-2 px-4 py-2 border border-border-color bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded-xl transition-colors text-sm font-bold">
+                            <span class="material-symbols-outlined text-[20px]">view_column</span>
+                            <span>Kolom</span>
+                        </button>
+                        <div id="colPickerPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-64">
+                            <p class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-3">Tampilkan Kolom</p>
+                            <div class="space-y-2" id="colCheckboxList">
+                                <!-- Checkboxes rendered by JS -->
+                            </div>
+                            <div class="mt-3 pt-3 border-t border-border-color flex gap-2">
+                                <button id="colSelectAll" class="flex-1 text-[10px] font-bold py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Pilih Semua</button>
+                                <button id="colResetDefault" class="flex-1 text-[10px] font-bold py-1.5 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="exportXlsx" class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:opacity-90 text-white rounded-xl transition-colors text-sm font-bold shadow-md shadow-emerald-600/20">
+                        <span class="material-symbols-outlined text-[20px]">download</span>
+                        <span>Export XLSX</span>
+                    </button>
+                    {isAdmin && (
+                        <button id="deleteAll" class="flex items-center gap-2 px-4 py-2 border border-error/50 hover:bg-error/10 text-error rounded-xl transition-colors text-sm font-bold">
+                            <span class="material-symbols-outlined text-[20px]">delete_sweep</span>
+                            <span>Delete All</span>
+                        </button>
+                    )}
+                    <button id="syncNow" class="flex items-center gap-2 px-4 py-2 border border-border-color bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded-xl transition-colors text-sm font-bold">
+                        <span class="material-symbols-outlined text-[20px]">refresh</span>
+                        <span>Reload Table</span>
+                    </button>
+                    <button id="toggleViewBtn" class="flex items-center gap-2 px-4 py-2 border border-border-color bg-surface-container-low hover:bg-surface-container-high text-on-surface rounded-xl transition-colors text-sm font-bold" title="Toggle antara tiket Open dan Closed (untuk HSA/Korlap)">
+                        <span class="material-symbols-outlined text-[20px]">switch_account</span>
+                        <span id="viewLabel">View: Open</span>
+                    </button>
+                    <a href="/admin/insera-data" class="flex items-center gap-2 px-4 py-2 bg-primary hover:opacity-90 text-white rounded-xl transition-colors text-sm font-bold shadow-md shadow-primary/20">
+                        <span class="material-symbols-outlined text-[20px]">bolt</span>
+                        <span>Scraper Menu</span>
+                    </a>
+                </div>
+
+                <!-- Stats Overview -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="flex flex-col gap-1 rounded-2xl bg-surface-container-lowest p-6 border border-border-color relative overflow-hidden group hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5">
+                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
+                            <span class="material-symbols-outlined text-primary" style="font-size: 80px; font-variation-settings: 'FILL' 1;">inbox</span>
+                        </div>
+                        <p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest z-10 relative">Total Open</p>
+                        <p id="statOpen" class="text-on-surface text-3xl font-black font-headline z-10 relative">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-surface-container-lowest p-6 border border-border-color relative overflow-hidden group hover:border-amber-500/50 transition-all hover:shadow-lg hover:shadow-amber-500/5">
+                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
+                            <span class="material-symbols-outlined text-amber-500" style="font-size: 80px; font-variation-settings: 'FILL' 1;">schedule</span>
+                        </div>
+                        <p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest z-10 relative">Near Expired (≤2h)</p>
+                        <p id="statNearExpired" class="text-amber-500 text-3xl font-black font-headline z-10 relative">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-surface-container-lowest p-6 border border-error/50 relative overflow-hidden group hover:border-error transition-all hover:shadow-lg hover:shadow-error/5">
+                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
+                            <span class="material-symbols-outlined text-error" style="font-size: 80px; font-variation-settings: 'FILL' 1;">timer_off</span>
+                        </div>
+                        <p class="text-error text-[10px] font-bold uppercase tracking-widest z-10 relative">EXPIRED (per TTR)</p>
+                        <p id="statExpired" class="text-error text-3xl font-black font-headline z-10 relative">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-surface-container-lowest p-6 border border-border-color relative overflow-hidden group hover:border-purple-500/50 transition-all hover:shadow-lg hover:shadow-purple-500/5">
+                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
+                            <span class="material-symbols-outlined text-purple-500" style="font-size: 80px; font-variation-settings: 'FILL' 1;">person_check</span>
+                        </div>
+                        <p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest z-10 relative">Assigned</p>
+                        <p id="statAssigned" class="text-purple-500 text-3xl font-black font-headline z-10 relative">--</p>
+                    </div>
+                    <div class="flex flex-col gap-1 rounded-2xl bg-surface-container-lowest p-6 border border-border-color relative overflow-hidden group hover:border-emerald-500/50 transition-all hover:shadow-lg hover:shadow-emerald-500/5">
+                        <div class="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-all duration-500 group-hover:scale-110">
+                            <span class="material-symbols-outlined text-emerald-500" style="font-size: 80px; font-variation-settings: 'FILL' 1;">check_circle</span>
+                        </div>
+                        <p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest z-10 relative">Closed</p>
+                        <p id="statClosed" class="text-on-surface text-3xl font-black font-headline z-10 relative">--</p>
+                    </div>
+                </div>
+
+                <!-- Technician Workload Statistics -->
+                <div id="techStatsContainer" class="animate-in fade-in slide-in-from-top-4 duration-500 mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px] text-purple-500">engineering</span>
+                            <h4 class="text-[11px] font-black uppercase tracking-widest text-on-surface-variant">Teknisi Workload</h4>
+                            <span id="unassignedCount" class="text-[10px] font-bold bg-error/10 text-error px-2 py-0.5 rounded-full">Belum Assign: --</span>
+                        </div>
+                        <button id="clearTechFilter" class="hidden text-[10px] font-bold text-primary hover:underline transition-all">Clear Filter</button>
+                    </div>
+                    <div id="techStatsList" class="flex flex-wrap gap-2">
+                        <!-- Stat items injected here -->
+                    </div>
+                </div>
+
+                <!-- HD Workload Statistics -->
+                <div id="hdStatsContainer" class="hidden animate-in fade-in slide-in-from-top-4 duration-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[18px] text-primary">groups</span>
+                            <h4 class="text-[11px] font-black uppercase tracking-widest text-on-surface-variant">HD Workload Monitoring</h4>
+                        </div>
+                        <button id="clearHdFilter" class="hidden text-[10px] font-bold text-primary hover:underline transition-all">Clear Filter</button>
+                    </div>
+                    <div id="hdStatsList" class="flex flex-wrap gap-2">
+                        <!-- Stat items injected here -->
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="flex flex-col md:flex-row gap-4 w-full">
+                    <div class="relative w-full md:flex-1 group">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <span class="material-symbols-outlined text-on-surface-variant text-[20px] transition-colors group-focus-within:text-primary">search</span>
+                        </div>
+                        <input id="searchInput" class="block w-full pl-12 pr-4 py-3.5 border border-border-color rounded-2xl bg-surface-container-low text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm font-bold transition-all shadow-sm" placeholder="Cari berdasarkan INC, No Tlp, Summary..." type="text" />
+                    </div>
+                    <div class="flex flex-wrap md:flex-nowrap gap-3 w-full md:w-auto">
+                        <input id="filterDate" type="date" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-4 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[150px]" title="Filter berdasarkan tanggal reported" />
+                        <!-- Customer Segment Multi-Select Filter -->
+                        <div class="relative" id="segmentFilterWrapper">
+                            <button id="segmentFilterBtn" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[160px] flex items-center gap-2 justify-between">
+                                <span id="segmentFilterLabel">Segment: All</span>
+                                <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                            </button>
+                            <div id="segmentFilterPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-72 max-h-[320px] overflow-y-auto">
+                                <div class="flex gap-2 mb-2">
+                                    <button id="segSelectAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Semua</button>
+                                    <button id="segClearAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                                </div>
+                                <div id="segmentCheckboxList" class="space-y-1">
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="TSEL" data-seg class="sr-only peer seg-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">TSEL SEGMEN (DCS, PL-TSEL)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="BGES" data-seg class="sr-only peer seg-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">BGES SEGMEN (DBS, DES, DGS, DPS, DSS, REG, RBS)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Source Ticket Multi-Select Filter -->
+                        <div class="relative" id="sourceFilterWrapper">
+                            <button id="sourceFilterBtn" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[160px] flex items-center gap-2 justify-between">
+                                <span id="sourceFilterLabel">Source: All</span>
+                                <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                            </button>
+                            <div id="sourceFilterPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-72 max-h-[320px] overflow-y-auto">
+                                <div class="flex gap-2 mb-2">
+                                    <button id="srcSelectAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Semua</button>
+                                    <button id="srcClearAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                                </div>
+                                <div id="sourceCheckboxList" class="space-y-1">
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="PROACTIVE_TICKET" data-src class="sr-only peer src-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">PROACTIVE_TICKET (SQM)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="PROACTIVE_OHI" data-src class="sr-only peer src-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">PROACTIVE_OHI (UNSPEC)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="INFRACARE" data-src class="sr-only peer src-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">InfraCare XX (INFRACARE)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="REGULER" data-src class="sr-only peer src-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">Selain itu (REGULER)</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Status Multi-Select Filter -->
+                        <div class="relative" id="statusFilterWrapper">
+                            <button id="statusFilterBtn" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[160px] flex items-center gap-2 justify-between">
+                                <span id="statusFilterLabel">Status: All</span>
+                                <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                            </button>
+                            <div id="statusFilterPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-72 max-h-[320px] overflow-y-auto">
+                                <div class="flex gap-2 mb-2">
+                                    <button id="stSelectAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Semua</button>
+                                    <button id="stClearAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                                </div>
+                                <div id="statusCheckboxList" class="space-y-1">
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="active" data-st class="sr-only peer st-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">Active (&lt;12h)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="nearExpired" data-st class="sr-only peer st-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">Near SLA (12-24h)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="expired" data-st class="sr-only peer st-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">EXPIRED (&gt;24h)</span>
+                                    </label>
+                                    <label class="flex items-center gap-3 cursor-pointer group py-1">
+                                        <div class="relative">
+                                            <input type="checkbox" value="closed" data-st class="sr-only peer st-checkbox" />
+                                            <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                                                <span class="material-symbols-outlined text-white text-[14px] leading-none hidden check-icon">check</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-sm font-bold">Closed</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Customer Type Multi-Select Filter -->
+                        <div class="relative" id="custTypeFilterWrapper">
+                            <button id="custTypeFilterBtn" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[160px] flex items-center gap-2 justify-between">
+                                <span id="custTypeFilterLabel">Cust Type: All</span>
+                                <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                            </button>
+                            <div id="custTypeFilterPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-72 max-h-[320px] overflow-y-auto">
+                                <input id="custTypeSearch" type="text" class="w-full px-3 py-2 bg-surface-container-high rounded-xl border-none text-sm mb-2 focus:ring-2 focus:ring-primary/20" placeholder="Cari customer type..." />
+                                <div class="flex gap-2 mb-2">
+                                    <button id="ctSelectAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Semua</button>
+                                    <button id="ctClearAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                                </div>
+                                <div id="custTypeCheckboxList" class="space-y-1"></div>
+                            </div>
+                        </div>
+                        <div class="relative" id="workzoneFilterWrapper">
+                            <button id="workzoneFilterBtn" class="bg-surface-container-low text-on-surface border border-border-color rounded-2xl px-5 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer font-bold shadow-sm min-w-[160px] flex items-center gap-2 justify-between">
+                                <span id="workzoneFilterLabel">Workzone: All</span>
+                                <span class="material-symbols-outlined text-[16px]">expand_more</span>
+                            </button>
+                            <div id="workzoneFilterPanel" class="hidden absolute right-0 top-full mt-2 z-50 bg-surface border border-border-color rounded-2xl shadow-2xl p-4 w-72 max-h-[320px] overflow-y-auto">
+                                <input id="workzoneSearch" type="text" class="w-full px-3 py-2 bg-surface-container-high rounded-xl border-none text-sm mb-2 focus:ring-2 focus:ring-primary/20" placeholder="Cari workzone..." />
+                                <div class="flex gap-2 mb-2">
+                                    <button id="wzSelectAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">Semua</button>
+                                    <button id="wzClearAll" class="flex-1 text-[10px] font-bold py-1 rounded-lg bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest transition-colors">Reset</button>
+                                </div>
+                                <div id="workzoneCheckboxList" class="space-y-1"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- HD Performance Filter (Admins Only) -->
+                {isAdmin && (
+                    <div id="hdStatsContainer" class="flex flex-wrap gap-4 items-center bg-surface-container-low/50 p-4 rounded-3xl border border-border-color/50 hidden">
+                        <div class="flex items-center gap-2 pr-4 border-r border-border-color/50">
+                            <span class="material-symbols-outlined text-primary text-sm">social_leaderboard</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">HD Performance (Today):</span>
+                        </div>
+                        <div id="hdStatsList" class="flex flex-wrap gap-2">
+                            <!-- HD list injected here -->
+                        </div>
+                        <button id="clearHdFilter" class="hidden ml-auto px-4 py-1.5 bg-error/10 text-error rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-error/20 transition-all">Clear Filter</button>
+                    </div>
+                )}
+
+                <!-- Bulk Action Bar (muncul saat ada tiket dipilih) -->
+                <div id="bulkActionBar" class="hidden sticky top-[73px] z-30 bg-primary text-white rounded-2xl px-5 py-3 flex items-center gap-4 shadow-xl shadow-primary/30 animate-in slide-in-from-top-2 duration-300">
+                    <div class="flex items-center gap-2 flex-1">
+                        <span class="material-symbols-outlined text-[20px]">checklist</span>
+                        <span id="bulkSelectedCount" class="font-black text-sm">0 tiket dipilih</span>
+                    </div>
+                    <button id="bulkAssignSendBtn" class="flex items-center gap-2 px-5 py-2 bg-white text-primary rounded-xl text-sm font-black hover:bg-white/90 transition-all shadow-md">
+                        <span class="material-symbols-outlined text-[18px]">how_to_reg</span>
+                        Assign & Kirim
+                    </button>
+                    <button id="bulkClearBtn" class="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-sm font-bold transition-all">
+                        <span class="material-symbols-outlined text-[18px]">close</span>
+                        Batal
+                    </button>
+                </div>
+
+                <!-- Data Table -->
+                <div class="rounded-xl border border-border-color bg-surface-container-lowest overflow-hidden shadow-sm">
+                    <div class="overflow-x-auto w-full">
+                        <table class="w-full text-left text-sm text-on-surface-variant">
+                            <thead class="bg-surface-container-low text-xs uppercase font-extrabold text-on-surface">
+                                <tr>
+                                    <th class="px-3 py-3 w-10" scope="col" data-col="checkbox">
+                                        <input type="checkbox" id="selectAllCheckbox" class="w-4 h-4 rounded border-2 border-border-color accent-primary cursor-pointer" title="Pilih Semua" />
+                                    </th>
+                                    <th class="px-3 py-3 min-w-[120px]" scope="col" data-col="order_id">NO INC</th>
+                                    <th class="px-3 py-3 min-w-[120px] max-w-[200px]" scope="col" data-col="summary">Summary</th>
+                                    <th class="px-3 py-3 min-w-[150px]" scope="col" data-col="reported_by">Source</th>
+                                    <th class="px-3 py-3 min-w-[100px] max-w-[120px] whitespace-normal" scope="col" data-col="device_name">ODP</th>
+                                    <th class="px-3 py-3 min-w-[100px] max-w-[120px] whitespace-normal" scope="col" data-col="rk_information">ODC</th>
+                                    <th class="px-3 py-3 min-w-[100px]" scope="col" data-col="service_no">No Internet</th>
+                                    <th class="px-3 py-3 min-w-[110px]" scope="col" data-col="status">Status</th>
+                                    <th class="px-3 py-3 min-w-[120px]" scope="col" data-col="customer_type">Cust Type</th>
+                                    <th class="px-3 py-3 min-w-[120px]" scope="col" data-col="ticket_type">Tipe Tiket</th>
+                                    <th class="px-3 py-3 min-w-[110px]" scope="col" data-col="customer_segment">Segment</th>
+                                    <th class="px-3 py-3 min-w-[150px]" scope="col" data-col="workzone">Workzone</th>
+                                    <th class="px-3 py-3 min-w-[100px]" scope="col" data-col="ticket_age">Umur Tiket</th>
+                                    <th class="px-3 py-3 min-w-[160px]" scope="col" data-col="ttr">TTR</th>
+                                    <th class="px-3 py-3 min-w-[130px]" scope="col" data-col="reported_date">Reported</th>
+                                    <th class="px-3 py-3 min-w-[100px] max-w-[150px] whitespace-normal" scope="col" data-col="team">Assign To</th>
+                                    <th class="px-3 py-3 min-w-[100px] max-w-[120px] whitespace-normal" scope="col" data-col="assigned_by">Assigned By</th>
+                                    <th class="px-3 py-3 pr-6 min-w-[90px] text-right" scope="col" data-col="actions">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="workOrdersTable" class="divide-y divide-border-color">
+                                <tr>
+                                    <td colspan="14" class="px-6 py-12 text-center text-on-surface-variant">
+                                        <div class="flex flex-col items-center justify-center gap-3">
+                                            <svg class="animate-spin h-8 w-8 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <span class="text-sm font-bold animate-pulse">Memuat data work order...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div id="pagination" class="border-t border-border-color px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-container-lowest">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-on-surface-variant uppercase">Show</span>
+                            <select id="itemsPerPage" class="bg-surface border border-border-color rounded-lg text-sm font-bold text-primary focus:ring-primary outline-none px-2 py-1" onchange="changePageSize(this.value)">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                            <span class="text-xs font-bold text-on-surface-variant uppercase">entries</span>
+                        </div>
+                        <p class="text-sm font-bold text-on-surface-variant flex-1 text-center sm:text-left sm:pl-4">
+                            Showing <span id="showingFrom">0</span> to <span id="showingTo">0</span> of <span id="totalCount" class="text-primary">0</span> results
+                        </p>
+                        <nav class="flex items-center gap-1">
+                            <button id="prevPage" class="p-1 rounded-lg hover:bg-surface-container-high text-on-surface-variant disabled:opacity-50 transition-colors">
+                                <span class="material-symbols-outlined">chevron_left</span>
+                            </button>
+                            <span id="currentPage" class="px-3 py-1 rounded bg-primary text-white text-sm font-bold shadow-md shadow-primary/20">1</span>
+                            <button id="nextPage" class="p-1 rounded-lg hover:bg-surface-container-high text-on-surface-variant transition-colors">
+                                <span class="material-symbols-outlined">chevron_right</span>
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center sticky top-0 bg-surface z-10">
+                <h3 class="text-on-surface text-xl font-extrabold font-headline">Edit Work Order</h3>
+                <button id="closeModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="editForm" class="p-6 space-y-4">
+                <input type="hidden" id="editId" />
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">NO INC</label>
+                        <input id="editOrderId" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" readonly />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Customer Type</label>
+                        <select id="editCustomerType" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium">
+                            <option value="HVC_PLATINUM">HVC Platinum</option>
+                            <option value="HVC_DIAMOND">HVC Diamond</option>
+                            <option value="HVC_GOLD">HVC Gold</option>
+                            <option value="REGULER">Reguler</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Tipe Tiket</label>
+                    <input id="editTicketType" readonly class="w-full px-3 py-2.5 bg-surface-container-highest border border-border-color rounded-xl text-on-surface text-sm font-bold" title="Dihitung otomatis dari summary ([SQM] = SQM)" />
+                    <p class="text-on-surface-variant text-[11px] mt-1">Otomatis: ada <code class="text-primary">[SQM]</code> di summary → SQM, selain itu Reguler.</p>
+                </div>
+
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Summary</label>
+                    <textarea id="editSummary" rows="3" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Contact Phone</label>
+                        <input id="editContactPhone" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Service No</label>
+                        <input id="editServiceNo" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Reported Date</label>
+                        <input id="editReportedDate" type="datetime-local" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Booking Date</label>
+                        <input id="editBookingDate" type="datetime-local" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Team</label>
+                        <input id="editTeam" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" placeholder="Enter team name..." />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Workzone</label>
+                        <input id="editWorkzone" class="w-full px-3 py-2.5 bg-surface-container-high border-none focus:ring-2 focus:ring-primary/20 rounded-xl text-on-surface text-sm font-medium" placeholder="Kode workzone INSERA" />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-error text-xs font-black uppercase mb-1 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[14px]">edit_note</span>
+                        HD Revision Notes / Reminder
+                    </label>
+                    <textarea id="editNotesHd" rows="2" class="w-full px-3 py-2.5 bg-error/5 border border-error/10 focus:ring-2 focus:ring-error/20 rounded-xl text-on-surface text-sm font-bold placeholder:font-normal" placeholder="Catatan untuk teknisi (revisi close bot, dsb)..."></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-6">
+                    <button type="button" id="deleteBtn" class="flex items-center gap-2 px-5 py-2.5 border border-error/50 text-error hover:bg-error/10 rounded-xl text-sm font-bold transition-colors">
+                        <span class="material-symbols-outlined text-[18px]">delete</span>
+                        Delete
+                    </button>
+                    <button type="button" id="cancelEditBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-xl text-sm font-bold transition-colors">
+                        Cancel
+                    </button>
+                    <button type="submit" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">save</span>
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Send Telegram Modal -->
+    <div id="sendModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-md mx-4 shadow-2xl">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface rounded-t-2xl">
+                <h3 class="text-on-surface text-xl font-extrabold font-headline">Kirim ke Telegram</h3>
+                <button id="closeSendModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-5">
+                <input type="hidden" id="sendWorkOrderId" />
+
+                <div class="bg-surface-container-highest p-4 rounded-xl border border-border-color text-center">
+                    <p class="text-on-surface-variant text-xs font-bold uppercase tracking-wider mb-1">Work Order ID</p>
+                    <p id="sendWorkOrderIdDisplay" class="text-primary font-mono font-bold text-xl">--</p>
+                </div>
+
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-2">Pilih Grup Telegram</label>
+                    <select id="sendGroupSelect" class="w-full px-4 py-3 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20">
+                        <option value="">-- Pilih Grup Tujuan --</option>
+                    </select>
+                    <p class="text-on-surface-variant text-[11px] mt-2">
+                        Pilih grup target pengiriman alert tiket ini.
+                    </p>
+                </div>
+
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button id="cancelSendBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-xl text-sm font-bold transition-colors">
+                        Batal
+                    </button>
+                    <button id="confirmSendBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">send</span>
+                        Kirim
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Assign & Send Modal -->
+    <div id="bulkAssignModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-lg mx-4 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+                        <span class="material-symbols-outlined text-xl">how_to_reg</span>
+                    </div>
+                    <div>
+                        <h3 class="text-on-surface text-lg font-extrabold font-headline">Bulk Assign & Kirim</h3>
+                        <p id="bulkModalSubtitle" class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">0 tiket dipilih</p>
+                    </div>
+                </div>
+                <button id="closeBulkModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+
+            <div class="p-6 space-y-5 overflow-y-auto flex-1">
+                <!-- Daftar tiket yang dipilih -->
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Tiket yang Dipilih</p>
+                    <div id="bulkTicketList" class="max-h-[120px] overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                        <!-- Diisi JS -->
+                    </div>
+                </div>
+
+                <!-- Pilih Teknisi -->
+                <div>
+                    <p class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant mb-2">Assign ke Teknisi</p>
+                    <div class="relative group mb-2">
+                        <span class="material-symbols-outlined absolute left-3 top-3 text-on-surface-variant text-[20px]">search</span>
+                        <input id="bulkNakerSearch" type="text" placeholder="Cari teknisi..." class="w-full pl-10 pr-4 py-2 bg-surface-container-high rounded-xl border-none text-sm focus:ring-2 focus:ring-primary/20" />
+                    </div>
+                    <div id="bulkNakerListContainer" class="max-h-[200px] overflow-y-auto space-y-1 pr-2 custom-scrollbar border border-border-color rounded-xl p-2">
+                        <!-- Diisi JS -->
+                    </div>
+                </div>
+
+                <!-- Preview Pesan -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Preview Pesan Telegram</p>
+                        <button id="togglePreviewBtn" class="text-[10px] font-bold text-primary hover:underline">Tampilkan</button>
+                    </div>
+                    <div id="bulkMsgPreview" class="hidden bg-surface-container-high rounded-xl p-3 text-[11px] font-mono text-on-surface-variant whitespace-pre-wrap max-h-[200px] overflow-y-auto border border-border-color">
+                        <!-- Preview diisi JS -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-border-color flex justify-end gap-3 flex-shrink-0 bg-surface">
+                <button id="cancelBulkBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface rounded-xl text-sm font-bold transition-colors">Batal</button>
+                <button id="saveBulkAssignBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                    <span class="material-symbols-outlined text-[18px]">send</span>
+                    <span>Assign & Kirim Telegram</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Manual Modal -->
+    <div id="addModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center sticky top-0 bg-surface z-10">
+                <h3 class="text-on-surface text-xl font-extrabold font-headline">Tambah Work Order</h3>
+                <button id="closeAddModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="addForm" class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">NO INC <span class="text-error">*</span></label>
+                        <input id="addOrderId" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="INC000012345678" required />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Customer Type</label>
+                        <select id="addCustomerType" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20">
+                            <option value="HVC_PLATINUM">HVC Platinum</option>
+                            <option value="HVC_DIAMOND">HVC Diamond</option>
+                            <option value="HVC_GOLD">HVC Gold</option>
+                            <option value="REGULER" selected>Reguler</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Summary <span class="text-error">*</span></label>
+                    <textarea id="addSummary" rows="3" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="Masukkan deskripsi gangguan..." required></textarea>
+                    <p class="text-on-surface-variant text-[11px] mt-1">Tipe tiket di-set otomatis: <code class="text-primary">[SQM]</code> di summary → SQM; tanpa itu → Reguler (terpisah dari Customer Type).</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Workzone</label>
+                        <input id="addWorkzone" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="Contoh: TUB, SG" />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Customer Segment</label>
+                        <input id="addCustomerSegment" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="PL-TSEL, DGS, dsb" />
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Reported Date</label>
+                        <input id="addReportedDate" type="datetime-local" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" />
+                    </div>
+                    <div>
+                        <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Team</label>
+                        <input id="addTeam" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="Nama tim teknisi..." />
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-6">
+                    <button type="button" id="cancelAddBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-xl text-sm font-bold transition-colors">
+                        Batal
+                    </button>
+                    <button type="submit" class="flex items-center gap-2 px-6 py-2.5 bg-tertiary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-tertiary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">add_circle</span>
+                        Simpan
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Assign Modal (Multi-select) -->
+    <div id="assignModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-surface">
+                <h3 class="text-on-surface text-xl font-extrabold font-headline">Assign Teknisi</h3>
+                <button id="closeAssignModal" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <input type="hidden" id="assignWorkOrderId" />
+                <div class="bg-surface-container-highest p-3 rounded-xl border border-border-color mb-4">
+                    <p class="text-on-surface-variant text-[10px] font-bold uppercase tracking-widest mb-1 text-center">Work Order ID</p>
+                    <p id="assignOrderIdDisplay" class="text-primary font-mono font-bold text-lg text-center">--</p>
+                </div>
+
+                <div class="relative group">
+                    <span class="material-symbols-outlined absolute left-3 top-3 text-on-surface-variant text-[20px]">search</span>
+                    <input id="nakerSearch" type="text" placeholder="Cari teknisi..." class="w-full pl-10 pr-4 py-2 bg-surface-container-high rounded-xl border-none text-sm focus:ring-2 focus:ring-primary/20" />
+                </div>
+
+                <div id="nakerListContainer" class="max-h-[300px] overflow-y-auto space-y-1 pr-2 custom-scrollbar">
+                    <!-- Naker rendered here -->
+                </div>
+
+                <div class="pt-4 border-t border-border-color flex justify-end gap-3">
+                    <button id="cancelAssignBtn" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface rounded-xl text-sm font-bold transition-colors">Batal</button>
+                    <button id="saveAssignBtn" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">how_to_reg</span>
+                        <span>Update Assign</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- History Modal -->
+    <div id="historyModal" class="hidden fixed inset-0 z-[100] bg-on-surface/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-surface w-full max-w-2xl rounded-[2.5rem] shadow-2xl border border-border-color overflow-hidden animate-in fade-in zoom-in duration-300">
+            <div class="px-8 py-6 border-b border-border-color flex justify-between items-center bg-surface-container-low/50">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-amber-500/10 rounded-2xl flex items-center justify-center text-amber-500">
+                        <span class="material-symbols-outlined text-2xl">history</span>
+                    </div>
+                    <div>
+                        <h3 class="font-black text-xl font-headline text-on-surface tracking-tight" id="historyModalTitle">History Assignment</h3>
+                        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-[0.2em] opacity-60">Audit Trail Log</p>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('historyModal').classList.add('hidden')" class="w-10 h-10 rounded-full hover:bg-surface-container-highest flex items-center justify-center transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-8 max-h-[60vh] overflow-y-auto" id="historyContent">
+                <!-- Timeline injected here -->
+            </div>
+            <div class="px-8 py-6 border-t border-border-color bg-surface-container-low/50 flex justify-end">
+                <button onclick="document.getElementById('historyModal').classList.add('hidden')" class="px-6 py-2.5 bg-surface-container-highest text-on-surface font-bold rounded-xl hover:opacity-90 transition-all uppercase tracking-widest text-xs">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Return Ticket Modal -->
+    <div id="returnModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-lg mx-4 shadow-2xl">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center bg-error/5">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-error/10 rounded-xl flex items-center justify-center text-error">
+                        <span class="material-symbols-outlined text-xl">keyboard_return</span>
+                    </div>
+                    <div>
+                        <h3 class="text-on-surface text-lg font-extrabold font-headline">Return Tiket</h3>
+                        <p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest">Kembalikan ke Status OPEN</p>
+                    </div>
+                </div>
+                <button onclick="window.closeReturnModal()" class="p-2 rounded-full hover:bg-error/10 text-on-surface-variant hover:text-error transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <!-- Detail Tiket -->
+                <div class="bg-surface-container-highest rounded-xl border border-border-color p-4 space-y-3">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-0.5">No Tiket</p>
+                            <p id="returnTicketId" class="text-primary font-mono font-black text-lg">--</p>
+                        </div>
+                        <span id="returnTicketCustType" class="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/10 text-amber-600">REGULER</span>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-0.5">Summary</p>
+                        <p id="returnTicketSummary" class="text-on-surface font-semibold text-sm line-clamp-2">--</p>
+                    </div>
+                    <div class="flex gap-4">
+                        <div>
+                            <p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest mb-0.5">Workzone</p>
+                            <p id="returnTicketWorkzone" class="text-on-surface font-bold text-xs">--</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Assigned To (Pemilik/Penanggung Jawab) -->
+                <div class="bg-primary/5 rounded-xl border border-primary/10 p-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-symbols-outlined text-primary text-[16px]">engineering</span>
+                        <p class="text-[10px] text-primary font-bold uppercase tracking-widest">Pemilik / Penanggung Jawab Tiket</p>
+                    </div>
+                    <div id="returnAssignedList" class="flex flex-wrap gap-1">
+                        <!-- Badge teknisi akan diisi di sini -->
+                    </div>
+                </div>
+
+                <!-- Catatan -->
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1.5">
+                        <span class="material-symbols-outlined text-[14px] align-middle mr-1">edit_note</span>
+                        Catatan untuk Pemilik/Penanggung Jawab <span class="text-error">*</span>
+                    </label>
+                    <textarea id="returnNotes" rows="3" class="w-full px-4 py-3 bg-surface-container-high rounded-xl border border-border-color text-on-surface text-sm focus:outline-none focus:ring-2 focus:ring-error/20 focus:border-error resize-none" placeholder="Contoh: Tiket return karena data pelanggan tidak lengkap. Silakan update data dan close ulang."></textarea>
+                    <p class="text-[10px] text-on-surface-variant mt-1.5">Catatan ini akan dikirim ke grup Telegram dan private chat teknisi terkait.</p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex justify-end gap-3 pt-2">
+                    <button onclick="window.closeReturnModal()" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-xl text-sm font-bold transition-colors">Batal</button>
+                    <button id="confirmReturnBtn" onclick="window.confirmReturnTicket()" class="flex items-center gap-2 px-6 py-2.5 bg-error hover:bg-error/90 text-white rounded-xl text-sm font-bold shadow-md shadow-error/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">keyboard_return</span>
+                        <span>Return Tiket</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Column Visibility Panel -->
+
+</Layout>
+
+<style is:global>
+    /* Styling for the customer type badges based on MORENA's color palette */
+    .badge-platinum {
+        background-color: rgba(var(--primary-rgb, 126, 87, 194), 0.15);
+        color: #b388ff;
+        border: 1px solid rgba(var(--primary-rgb, 126, 87, 194), 0.3);
+    }
+    .badge-diamond {
+        background-color: rgba(0, 188, 212, 0.15);
+        color: #00bcd4;
+        border: 1px solid rgba(0, 188, 212, 0.3);
+    }
+    .badge-gold {
+        background-color: rgba(255, 193, 7, 0.15);
+        color: #ffca28;
+        border: 1px solid rgba(255, 193, 7, 0.3);
+    }
+    .badge-reguler {
+        background-color: rgba(158, 158, 158, 0.15);
+        color: #9e9e9e;
+        border: 1px solid rgba(158, 158, 158, 0.3);
+    }
+    .badge-sqm {
+        background-color: rgba(156, 39, 176, 0.15);
+        color: #ce93d8;
+        border: 1px solid rgba(156, 39, 176, 0.35);
+    }
+    .badge-tipe-reguler {
+        background-color: rgba(96, 125, 139, 0.15);
+        color: #90a4ae;
+        border: 1px solid rgba(96, 125, 139, 0.35);
+    }
+    /* Resize handle for table columns */
+    th[data-col] {
+        position: relative;
+        overflow: hidden;
+        user-select: none;
+    }
+    /* Custom resize handle */
+    .resize-handle {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        background: transparent;
+        cursor: col-resize;
+        z-index: 10;
+        transition: background 0.2s;
+    }
+    .resize-handle:hover,
+    .resize-handle.resizing {
+        background: var(--primary, #7E57C2);
+    }
+    /* Prevent text selection during resize */
+    .resizing {
+        user-select: none !important;
+    }
+    table.resizing {
+        cursor: col-resize;
+    }
+    /* Prevent text overflow */
+    td, th {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /* Allow text wrap only for specific columns but keep resize working */
+    td[data-col="team"], td[data-col="assigned_by"] {
+        white-space: normal;
+        word-wrap: break-word;
+    }
+    /* Summary column - allow wrap but with fixed layout */
+    td[data-col="summary"] {
+        white-space: normal;
+        word-wrap: break-word;
+        max-width: 300px;
+    }
+    /* Grid lines for table cells */
+    th, td {
+        border-right: 1px solid rgba(0, 0, 0, 0.06);
+    }
+    /* Zebra striping for rows */
+    tbody tr:nth-child(even) {
+        background-color: rgba(0, 0, 0, 0.02);
+    }
+    tbody tr:hover {
+        background-color: rgba(126, 87, 194, 0.05);
+    }
+</style>
+
+<script is:inline define:vars={{ initialWorkOrders, dbError, PUBLIC_BACKEND_URL }}>
+    const API_URL = PUBLIC_BACKEND_URL;
+
+    if (dbError) {
+        console.error(`[Dashboard] Database Error: ${dbError}`);
+    }
+
+    // --- GLOBAL STATE & UTIL ---
+    window.allWorkOrders = initialWorkOrders || [];
+    window.filteredWorkOrders = [...window.allWorkOrders];
+    window.currentPage = 1;
+    window.pageSize = 10;
+    window.nakerList = [];
+    window.selectedWorkzones = [];
+    window.activeTechFilter = null;
+    window.activeHdFilter = null;
+    const CURRENT_USER = document.querySelector('meta[name="current-user"]')?.content || "Unknown";
+
+    // --- HELPER FUNCTIONS ---
+    window.isExpired = function(expiredDate) {
+        if (!expiredDate) return false;
+        return new Date(expiredDate) < new Date();
+    };
+
+    window.isNearExpired = function(expiredDate) {
+        if (!expiredDate) return false;
+        const exp = new Date(expiredDate);
+        const now = new Date();
+        const hoursDiff = (exp.getTime() - now.getTime()) / (1000 * 60 * 60);
+        return hoursDiff > 0 && hoursDiff <= 2;
+    };
+
+    // --- COLUMN PICKER LOGIC (Defined Early to avoid ReferenceErrors) ---
+    const COLUMN_DEFS = [
+        { key: "order_id",          label: "NO INC",         default: true  },
+        { key: "summary",           label: "Summary",         default: true  },
+        { key: "reported_by",       label: "Source",          default: true  },
+        { key: "device_name",       label: "ODP",             default: true  },
+        { key: "rk_information",    label: "ODC",             default: true  },
+        { key: "service_no",        label: "No Internet",     default: true  },
+        { key: "status",            label: "Status",          default: true  },
+        { key: "customer_type",     label: "Cust Type",       default: true  },
+        { key: "ticket_type",       label: "Tipe Tiket",      default: true  },
+        { key: "customer_segment",  label: "Segment",         default: true  },
+        { key: "workzone",          label: "Workzone",        default: true  },
+        { key: "ticket_age",        label: "Umur Tiket",      default: true  },
+        { key: "ttr",               label: "TTR",             default: true  },
+        { key: "reported_date",     label: "Reported Date",   default: true  },
+        { key: "team",              label: "Assign To",       default: true  },
+        { key: "assigned_by",       label: "Assigned By",     default: true  },
+        { key: "actions",           label: "Aksi",            default: true  },
+    ];
+
+    const LS_KEY = "morena_ticket_cols";
+
+    function loadColPrefs() {
+        try {
+            const raw = localStorage.getItem(LS_KEY);
+            if (!raw) {
+                const prefs = {};
+                COLUMN_DEFS.forEach(c => prefs[c.key] = c.default);
+                return prefs;
+            }
+            const saved = JSON.parse(raw);
+            if (saved && typeof saved === "object") return saved;
+        } catch(e) { console.warn("[Dashboard] localStorage Error:", e); }
+        const prefs = {};
+        COLUMN_DEFS.forEach(c => prefs[c.key] = c.default);
+        return prefs;
+    }
+
+    let colPrefs = loadColPrefs();
+
+    function saveColPrefs() {
+        localStorage.setItem(LS_KEY, JSON.stringify(colPrefs));
+    }
+
+    window.applyColumnVisibility = function() {
+        COLUMN_DEFS.forEach(({ key }) => {
+            const visible = colPrefs[key] !== false;
+            document.querySelectorAll(`[data-col="${key}"]`).forEach(el => {
+                el.style.display = visible ? "" : "none";
+            });
+        });
+    };
+
+    function safeParse(json, fallback = []) {
+        if (!json) return fallback;
+        try {
+            const parsed = typeof json === 'string' ? JSON.parse(json) : json;
+            return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+        } catch (e) { return fallback; }
+    }
+
+    const ALL_WORKZONES = ["BTC","CDN","KAI","NGS","PNI","TUS","BUM","LBJ","MOR","SGT","SYA","TBK","TJT","DGS","SGL","SKN","SLU","TIN","TJU","BDS","AVI","BLP","KIJ","KMS","PYT","TPI","TUB","TER","RAI","DBS"];
+    let selectedWorkzones = [];
+
+    // Customer Type multi-select filter
+    const ALL_CUST_TYPES = ["HVC PLATINUM", "HVC DIAMOND", "HVC GOLD", "REGULER"];
+    let selectedCustTypes = [];
+
+    window.changePageSize = function(size) {
+        window.pageSize = parseInt(size);
+        window.currentPage = 1;
+        window.renderWorkOrders();
+    };
+
+    async function loadNaker() {
+        try {
+            const res = await fetch("/api/manage-technician");
+            const result = await res.json();
+            if (result.status === "success") {
+                nakerList = result.data || [];
+            }
+        } catch (err) {
+            console.warn("Could not load naker data.");
+        }
+        renderWorkOrders();
+    }
+
+    const customerTypeColors = {
+        HVC_PLATINUM: "badge-platinum",
+        HVC_DIAMOND: "badge-diamond",
+        HVC_GOLD: "badge-gold",
+        REGULER: "badge-reguler",
+    };
+
+    const ticketTypeColors = {
+        SQM: "badge-sqm",
+        REGULER: "badge-tipe-reguler",
+    };
+
+    function formatDate(dateStr) {
+        if (!dateStr) return "-";
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+        return date.toLocaleString("id-ID", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    }
+
+    function isExpired(expiredDate) {
+        if (!expiredDate) return false;
+        return new Date(expiredDate) < new Date();
+    }
+
+    function isNearExpired(expiredDate) {
+        if (!expiredDate) return false;
+        const exp = new Date(expiredDate);
+        const now = new Date();
+        const hoursDiff = (exp.getTime() - now.getTime()) / (1000 * 60 * 60);
+        return hoursDiff > 0 && hoursDiff <= 2; // Within 2 hours
+    }
+
+    function getExpiredStatus(expiredDate) {
+        if (isExpired(expiredDate)) {
+            return { class: "text-error bg-error/10 font-bold border border-error/20", icon: "error" };
+        }
+        if (isNearExpired(expiredDate)) {
+            return { class: "text-amber-500 bg-amber-500/10 font-bold border border-amber-500/20", icon: "schedule" };
+        }
+        return {
+            class: "text-emerald-500 bg-emerald-500/10 font-bold border border-emerald-500/20",
+            icon: "check_circle",
+        };
+    }
+
+    function updateTicketAges() {
+        const ageElements = document.querySelectorAll('.ticket-age');
+        ageElements.forEach(el => {
+            const reported = el.getAttribute('data-reported');
+            if (!reported) return;
+            const start = new Date(reported).getTime();
+            const now = new Date().getTime();
+            const diff = now - start;
+            if (diff < 0) return;
+            
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+            el.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        });
+    }
+
+    setInterval(updateTicketAges, 1000);
+
+    // ── TTR (Time To Recover) Helper ─────────────────────────────────────────
+    const TTR_HOURS = { 'HVC_DIAMOND': 3, 'HVC_PLATINUM': 6, 'HVC_GOLD': 12, 'REGULER': 24 };
+    const USE_BOOKING_TIERS = new Set(['REGULER', 'HVC_GOLD']);
+
+    // TTR hanya berlaku untuk Source = REGULER (bukan SQM/UNSPEC/INFRACARE)
+    function isRegulerSource(wo) {
+        const src = (wo.reported_by || wo.reportedBy || '').toUpperCase();
+        const isSQM       = src.includes('PROACTIVE') && src.includes('TICKET');
+        const isUNSPEC    = (src.includes('PROACTIVE') && src.includes('OHI')) || src.startsWith('PROMAN-');
+        const isINFRACARE = src.includes('INFRACARE');
+        return !isSQM && !isUNSPEC && !isINFRACARE;
+    }
+
+    function calcTTR(wo) {
+        // TTR hanya untuk source REGULER
+        if (!isRegulerSource(wo)) return null;
+
+        const rawTier = (wo.customer_type || wo.customerType || 'REGULER').toUpperCase();
+        const tier = Object.keys(TTR_HOURS).find(k => rawTier.includes(k)) || 'REGULER';
+        const ttrHours = TTR_HOURS[tier];
+
+        const reportedRaw = wo.reported_date || wo.reportedDate;
+        const bookingRaw  = wo.booking_date  || wo.bookingDate;
+        if (!reportedRaw) return null;
+
+        let startDate;
+        if (USE_BOOKING_TIERS.has(tier) && bookingRaw) {
+            const bd = new Date(bookingRaw), rd = new Date(reportedRaw);
+            startDate = bd > rd ? bd : rd;
+        } else {
+            startDate = new Date(reportedRaw);
+        }
+        if (isNaN(startDate.getTime())) return null;
+
+        const now        = Date.now();
+        const expiredAt  = new Date(startDate.getTime() + ttrHours * 3600000);
+        const remainMs   = expiredAt.getTime() - now;
+        const isExpired  = remainMs <= 0;
+        const isNear     = !isExpired && remainMs <= 2 * 3600000;
+
+        const absH = Math.floor(Math.abs(remainMs) / 3600000);
+        const absM = Math.floor((Math.abs(remainMs) % 3600000) / 60000);
+
+        const expiredStr = expiredAt.toLocaleString('id-ID', {
+            timeZone: 'Asia/Jakarta', day:'2-digit', month:'2-digit',
+            year:'numeric', hour:'2-digit', minute:'2-digit', hour12: false
+        }).replace(',','');
+
+        const bookingNote = USE_BOOKING_TIERS.has(tier) && bookingRaw && new Date(bookingRaw) > new Date(reportedRaw)
+            ? ' <span class="text-[8px] text-on-surface-variant">(dari booking)</span>' : '';
+
+        let statusBadge, remainText;
+        if (isExpired) {
+            statusBadge = '<span class="px-1.5 py-0.5 rounded text-[8px] font-black bg-error text-white">EXPIRED</span>';
+            remainText  = `<span class="text-error font-black">${absH}h ${absM}m LEWAT</span>`;
+        } else if (isNear) {
+            statusBadge = '<span class="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-500 text-white">NEAR EXPIRED</span>';
+            remainText  = `<span class="text-amber-500 font-black">${absH}h ${absM}m lagi</span>`;
+        } else {
+            statusBadge = '<span class="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-500 text-white">NEW</span>';
+            remainText  = `<span class="text-emerald-500 font-black">${absH}h ${absM}m lagi</span>`;
+        }
+
+        return { tier, ttrHours, expiredStr, statusBadge, remainText, bookingNote, isExpired, isNear };
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    window.renderWorkOrders = function() {
+        console.log("[Render] renderWorkOrders called");
+        try {
+            const tbody = document.getElementById("workOrdersTable");
+            if (!tbody) {
+                console.error("[Render] workOrdersTable not found!");
+                return;
+            }
+
+        // Use window.filteredWorkOrders to ensure we have the correct data
+        const filteredData = window.filteredWorkOrders || [];
+        console.log("[Render] filteredData count:", filteredData.length);
+        const currentPageNum = window.currentPage || 1;
+        const currentPageSize = window.pageSize || 10;
+        const start = (currentPageNum - 1) * currentPageSize;
+        const end = start + currentPageSize;
+        const pageData = filteredData.slice(start, end);
+
+        if (pageData.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="14" class="px-6 py-8 text-center text-on-surface-variant font-bold">
+                        Tidak ada data work order yang ditemukan.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = pageData.map((wo) => {
+            const ctBadge = customerTypeColors[wo.customer_type] || customerTypeColors["REGULER"];
+            const ttBadge = ticketTypeColors[wo.ticket_type || "REGULER"] || ticketTypeColors["REGULER"];
+
+            let currentAssigned = [];
+            try {
+                if (wo.assigned_to) {
+                    const parsed = typeof wo.assigned_to === 'string' ? JSON.parse(wo.assigned_to) : wo.assigned_to;
+                    currentAssigned = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+                }
+            } catch (e) { console.warn("Failed to parse assigned_to", e); }
+            
+            const assignedNames = currentAssigned.map(a => typeof a === 'object' ? (a.nama || a.name || 'Unknown') : a);
+            const assignBadges = assignedNames.length > 0
+                ? assignedNames.map(n => `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">${n}</span>`).join(" ")
+                : `<span class="text-on-surface-variant text-[10px] italic">Belum di-assign</span>`;
+
+            const reportedDate = wo.reported_date || wo.reportedDate;
+            const reportedDisplay = reportedDate ? new Date(reportedDate).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' }) : "-";
+            
+            const rawSource = (wo.reported_by || wo.reportedBy || "").toUpperCase();
+            const rawSourceOrig = wo.reported_by || wo.reportedBy || "-";
+
+            const isProactiveTicket = rawSource.includes("PROACTIVE") && rawSource.includes("TICKET");
+            const isProactiveOhi = (rawSource.includes("PROACTIVE") && rawSource.includes("OHI")) || rawSource.startsWith("PROMAN-");
+            const isInfracare = rawSource.includes("INFRACARE");
+
+            let sourceLabel, sourceClass;
+            if (isProactiveTicket) {
+                sourceLabel = "SQM";
+                sourceClass = "bg-primary/10 text-primary border-primary/20";
+            } else if (isProactiveOhi) {
+                sourceLabel = "UNSPEC";
+                sourceClass = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+            } else if (isInfracare) {
+                sourceLabel = "INFRACARE";
+                sourceClass = "bg-error/10 text-error border-error/20";
+            } else {
+                sourceLabel = "REGULER";
+                sourceClass = "bg-surface-container-highest text-on-surface-variant border-border-color";
+            }
+
+            // Calculate ticket age and EXPIRED status
+            const now = new Date().getTime();
+            const reported = wo.reported_date || wo.reportedDate;
+            let ageHours = 0;
+            let isExpired24h = false;
+            if (reported) {
+                ageHours = (now - new Date(reported).getTime()) / (1000 * 60 * 60);
+                isExpired24h = ageHours > 24;
+            }
+            const expiredBadge = isExpired24h ? '<span class="ml-1 px-1.5 py-0.5 rounded text-[8px] font-black bg-error text-white">EXPIRED</span>' : '';
+
+            return `
+            <tr class="hover:bg-surface-container-low/50 transition-colors border-b border-border-color group bulk-row" data-wo-id="${wo.id}" data-order-id="${wo.order_id || wo.orderId || ''}">
+                <td class="px-3 py-3 w-10" data-col="checkbox">
+                    <input type="checkbox" class="bulk-checkbox w-4 h-4 rounded border-2 border-border-color accent-primary cursor-pointer" data-wo-id="${wo.id}" />
+                </td>
+                <td class="px-3 py-3 font-mono text-xs text-primary font-black whitespace-nowrap" data-col="order_id">${wo.order_id || wo.orderId || '-'}</td>
+                <td class="px-3 py-3" data-col="summary">
+                    <div class="flex flex-col gap-0.5">
+                        <p class="text-on-surface font-semibold text-sm line-clamp-2 leading-tight">${wo.summary || wo.title || wo.description || "-"}</p>
+                        ${(wo.contact_phone || wo.contactPhone) ? `<p class="text-[11px] text-on-surface-variant font-bold tracking-wide"><span class="material-symbols-outlined text-[11px] align-middle mr-0.5">call</span>${wo.contact_phone || wo.contactPhone}</p>` : ""}
+                        ${(wo.notes_hd || wo.notesHd) ? `<p class="text-[10px] text-error font-bold mt-1"><span class="material-symbols-outlined text-[10px] align-middle mr-0.5">notifications_active</span>REMINDER: ${(wo.notes_hd || wo.notesHd).substring(0, 50)}${(wo.notes_hd || wo.notesHd).length > 50 ? '...' : ''}</p>` : ""}
+                    </div>
+                </td>
+                <td class="px-3 py-3" data-col="reported_by">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[10px] font-mono text-on-surface-variant leading-tight line-clamp-2" title="${rawSourceOrig}">${rawSourceOrig !== "-" ? rawSourceOrig : '<span class="opacity-40">-</span>'}</span>
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black border ${sourceClass} w-fit">${sourceLabel}</span>
+                    </div>
+                </td>
+                <td class="px-3 py-3 font-mono text-[10px] font-bold" data-col="device_name">
+                    <span class="text-primary">${wo.device_name || wo.deviceName || "-"}</span>
+                </td>
+                <td class="px-3 py-3 font-mono text-[10px] font-bold" data-col="rk_information">
+                    <span class="text-secondary">${wo.rk_information || wo.rkInformation || "-"}</span>
+                </td>
+                <td class="px-3 py-3" data-col="service_no">
+                    <span class="text-xs font-mono font-bold text-primary">${wo.service_no || wo.serviceNo || "-"}</span>
+                </td>
+                <td class="px-3 py-3" data-col="status">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-surface-container-highest text-on-surface border border-border-color">${wo.status || "-"}</span>
+                </td>
+                <td class="px-3 py-3" data-col="customer_type">
+                    ${(() => {
+                        const custType = (wo.customer_type || wo.customerType || "REGULER").toUpperCase();
+                        let custClass = "bg-surface-container-highest text-on-surface-variant border-border-color";
+                        let custLabel = custType;
+                        if (custType.includes("PLATINUM")) { custClass = "bg-purple-500/10 text-purple-600 border-purple-500/20"; custLabel = "PLATINUM"; }
+                        else if (custType.includes("DIAMOND")) { custClass = "bg-blue-500/10 text-blue-600 border-blue-500/20"; custLabel = "DIAMOND"; }
+                        else if (custType.includes("GOLD")) { custClass = "bg-amber-500/10 text-amber-600 border-amber-500/20"; custLabel = "GOLD"; }
+                        else if (custType.includes("REGULER")) { custClass = "bg-surface-container-highest text-on-surface-variant border-border-color"; custLabel = "REGULER"; }
+                        return `<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black border ${custClass}">${custLabel}</span>`;
+                    })()}
+                </td>
+                <td class="px-3 py-3 font-bold text-[10px] uppercase" data-col="ticket_type">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded border font-black ${sourceClass}">${sourceLabel}</span>
+                </td>
+                <td class="px-3 py-3" data-col="customer_segment">
+                    <span class="text-xs font-bold text-on-surface-variant">${wo.customer_segment || wo.customerSegment || "-"}</span>
+                </td>
+                <td class="px-3 py-3" data-col="workzone">
+                    <span class="text-xs font-medium text-on-surface-variant line-clamp-1">${wo.workzone || "-"}</span>
+                </td>
+                <td class="px-3 py-3" data-col="ticket_age">
+                    <div class="flex items-center gap-1.5 font-mono text-xs font-black text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-lg border border-border-color/50 min-w-[90px] justify-center ${isExpired24h ? 'border-error/50 bg-error/5' : ''}">
+                        <span class="ticket-age ${isExpired24h ? 'text-error' : ''}" data-reported="${reportedDate || ''}">00:00:00</span>
+                        ${expiredBadge}
+                    </div>
+                </td>
+                ${(() => {
+                    const ttr = calcTTR(wo);
+                    if (!ttr) return `<td class="px-3 py-3 text-[10px] text-on-surface-variant/40" data-col="ttr">-</td>`;
+                    const borderClass = ttr.isExpired ? 'border-error/40 bg-error/5' : ttr.isNear ? 'border-amber-500/40 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5';
+                    return `
+                    <td class="px-3 py-3" data-col="ttr">
+                        <div class="flex flex-col gap-1 rounded-xl border ${borderClass} px-2.5 py-1.5 min-w-[150px]">
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[9px] font-black uppercase text-on-surface-variant">${ttr.tier} · ${ttr.ttrHours}h</span>
+                                ${ttr.statusBadge}
+                            </div>
+                            <div class="text-[10px] font-bold text-on-surface">
+                                Exp: <span class="font-mono">${ttr.expiredStr}</span>${ttr.bookingNote}
+                            </div>
+                            <div class="text-[10px]">Sisa: ${ttr.remainText}</div>
+                        </div>
+                    </td>`;
+                })()}
+                <td class="px-3 py-3" data-col="reported_date">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-on-surface whitespace-nowrap">${reportedDisplay}</span>
+                        <span class="text-[10px] text-on-surface-variant font-medium">${reportedDate ? 'WIB' : ''}</span>
+                    </div>
+                </td>
+                <td class="px-3 py-3" data-col="team">
+                    <div class="flex flex-col gap-1.5">
+                        ${assignedNames.length > 0
+                            ? `<div class="flex flex-wrap gap-1">${assignBadges}</div>`
+                            : `<span class="text-[10px] italic text-on-surface-variant/50">Belum di-assign</span>`
+                        }
+                    </div>
+                </td>
+                <td class="px-3 py-3" data-col="assigned_by">
+                    ${wo.assigned_by
+                        ? `<p class="text-[11px] font-bold text-primary"><span class="material-symbols-outlined text-[12px] align-middle mr-0.5">person</span>ASSIGNED BY HD - ${wo.assigned_by}</p>`
+                        : assignedNames.length > 0
+                            ? `<span class="text-[10px] font-bold text-amber-500">INPUT MANUAL</span>`
+                            : `<span class="text-[10px] opacity-40">-</span>`
+                    }
+                </td>
+                <td class="px-3 py-3 pr-6 text-right" data-col="actions">
+                    <div class="flex justify-end gap-1 opacity-100 sm:opacity-40 group-hover:opacity-100 transition-all duration-300">
+                        <button onclick="window.openAssignModal(${wo.id}, '${wo.order_id || wo.orderId}')" class="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors" title="Assign Specialist">
+                            <span class="material-symbols-outlined text-[18px]">how_to_reg</span>
+                        </button>
+                        <button onclick="window.returnTicket(${wo.id}, '${wo.order_id || wo.orderId}')" class="p-1.5 hover:bg-error/10 text-error rounded-lg transition-colors" title="Return Ticket">
+                            <span class="material-symbols-outlined text-[18px]">keyboard_return</span>
+                        </button>
+                        <button onclick="window.openSendModal(${wo.id}, '${wo.order_id || wo.orderId || ''}')" class="p-1.5 hover:bg-tertiary/10 text-tertiary rounded-lg transition-colors" title="Send to Telegram">
+                            <span class="material-symbols-outlined text-[18px]">send</span>
+                        </button>
+                        <button onclick="window.openHistoryModal(${wo.id}, '${wo.order_id || wo.orderId}')" class="p-1.5 hover:bg-amber-500/10 text-amber-500 rounded-lg transition-colors" title="Assignment History">
+                            <span class="material-symbols-outlined text-[18px]">history</span>
+                        </button>
+                        <button onclick="window.openEditModal(${wo.id})" class="p-1.5 hover:bg-surface-container-highest text-on-surface-variant rounded-lg transition-colors" title="Edit Data">
+                            <span class="material-symbols-outlined text-[18px]">edit</span>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            `;
+        }).join("");
+
+        updateTicketAges();
+
+        // Re-apply column visibility after re-render
+        applyColumnVisibility();
+
+        const showingFrom = document.getElementById("showingFrom");
+        const showingTo = document.getElementById("showingTo");
+        const totalCount = document.getElementById("totalCount");
+        const currentPageEl = document.getElementById("currentPage");
+
+        if (showingFrom) showingFrom.textContent = (start + 1).toString();
+        if (showingTo) showingTo.textContent = Math.min(end, filteredData.length).toString();
+        if (totalCount) totalCount.textContent = filteredData.length.toString();
+        if (currentPageEl) currentPageEl.textContent = currentPageNum.toString();
+        } catch (err) {
+            console.error("[Dashboard] renderWorkOrders ERROR:", err);
+        }
+    }
+
+    window.updateStats = function() {
+        try {
+            // Safety check: ensure allWorkOrders is defined
+            const allOrders = window.allWorkOrders || [];
+            if (!Array.isArray(allOrders)) {
+                console.warn("[updateStats] allWorkOrders is not an array", allOrders);
+                return;
+            }
+            
+            const closedStatuses = ["CLOSED", "closed", "RESOLVED", "CANCELLED"];
+            const closedCount = allOrders.filter((wo) => closedStatuses.includes(wo.status || wo.TicketStatus)).length;
+            const openWorkOrders = allOrders.filter((wo) => !closedStatuses.includes(wo.status || wo.TicketStatus));
+            const openCount = openWorkOrders.length;
+
+            // Calculate ticket age based on reported_date
+            const now = new Date().getTime();
+            const getTicketAgeHours = (wo) => {
+                const reported = wo.reported_date || wo.reportedDate;
+                if (!reported) return 0;
+                const reportedTime = new Date(reported).getTime();
+                return (now - reportedTime) / (1000 * 60 * 60);
+            };
+
+            // EXPIRED & NEAR EXPIRED: gunakan TTR per-tier (bukan hardcode 24h)
+            const expiredCount = openWorkOrders.filter((wo) => {
+                const ttr = calcTTR(wo);
+                return ttr ? ttr.isExpired : getTicketAgeHours(wo) > 24;
+            }).length;
+            const nearExpiredCount = openWorkOrders.filter((wo) => {
+                const ttr = calcTTR(wo);
+                return ttr ? (ttr.isNear && !ttr.isExpired) : (() => {
+                    const h = getTicketAgeHours(wo);
+                    return h >= 12 && h <= 24;
+                })();
+            }).length;
+
+            // Assigned count (tickets with assigned_to not null/empty)
+            const assignedCount = openWorkOrders.filter((wo) => {
+                const assigned = wo.assigned_to || wo.assignedTo;
+                return assigned && assigned !== '[]' && assigned !== '';
+            }).length;
+
+            const statOpen = document.getElementById("statOpen");
+            const statNearExpired = document.getElementById("statNearExpired");
+            const statExpired = document.getElementById("statExpired");
+            const statAssigned = document.getElementById("statAssigned");
+            const statClosed = document.getElementById("statClosed");
+
+            if (statOpen) statOpen.textContent = (openCount || 0).toString();
+            if (statNearExpired) statNearExpired.textContent = (nearExpiredCount || 0).toString();
+            if (statExpired) statExpired.textContent = (expiredCount || 0).toString();
+            if (statAssigned) statAssigned.textContent = (assignedCount || 0).toString();
+            if (statClosed) statClosed.textContent = (closedCount || 0).toString();
+            console.log(`[Dashboard] Stats updated: ${openCount || 0} open, ${assignedCount || 0} assigned, ${expiredCount || 0} expired (>24h), ${closedCount || 0} closed.`);
+        } catch (err) {
+            console.error("[Dashboard] updateStats ERROR:", err);
+        }
+    }
+
+    window.applyFilters = function() {
+        try {
+            const searchInput = document.getElementById("searchInput")?.value.toLowerCase() || "";
+            const dateFilter = document.getElementById("filterDate")?.value || "";
+            
+            // Get multi-select filter values
+            const selectedSegments = Array.from(document.querySelectorAll('input[data-seg]:checked')).map(cb => cb.value);
+            const selectedSources = Array.from(document.querySelectorAll('input[data-src]:checked')).map(cb => cb.value);
+            const selectedStatuses = Array.from(document.querySelectorAll('input[data-st]:checked')).map(cb => cb.value);
+
+            // Calculate ticket age for filtering
+            const now = new Date().getTime();
+            const getTicketAgeHours = (wo) => {
+                const reported = wo.reported_date || wo.reportedDate;
+                if (!reported) return 0;
+                return (now - new Date(reported).getTime()) / (1000 * 60 * 60);
+            };
+
+            const closedStatuses = ["CLOSED", "closed"];
+
+            window.filteredWorkOrders = window.allWorkOrders.filter((wo) => {
+                const order_id = wo.order_id || wo.orderId || "";
+                const summary = (wo.summary || wo.title || wo.description || "").toLowerCase();
+                const contact_phone = wo.contact_phone || wo.contactPhone || "";
+                const service_no = wo.service_no || wo.serviceNo || "";
+                const workzone = wo.workzone || wo.workZone || "";
+                const status = (wo.status || wo.TicketStatus || "").toUpperCase();
+                const segment = (wo.customer_segment || wo.customerSegment || "").toUpperCase().trim();
+                const source = (wo.reported_by || wo.reportedBy || "REGULER").toUpperCase().trim();
+
+                const matchesSearch =
+                    !searchInput ||
+                    (order_id && order_id.toLowerCase().includes(searchInput)) ||
+                    (summary && summary.includes(searchInput)) ||
+                    (contact_phone && contact_phone.includes(searchInput)) ||
+                    (service_no && service_no.includes(searchInput));
+
+                // Segment Filter Logic - Multi-select
+                let matchesSegment = true;
+                if (selectedSegments.length > 0) {
+                    const tselSegments = ["DCS", "PL-TSEL"];
+                    const bgesSegments = ["DBS", "DES", "DGS", "DPS", "DSS", "REG", "RBS"];
+                    matchesSegment = selectedSegments.some(sel => {
+                        if (sel === "TSEL") return tselSegments.some(s => segment.includes(s));
+                        if (sel === "BGES") return bgesSegments.some(s => segment.includes(s));
+                        return false;
+                    });
+                }
+
+                // Source Filter Logic - Multi-select
+                let matchesSource = true;
+                if (selectedSources.length > 0) {
+                    matchesSource = selectedSources.some(sel => {
+                        if (sel === "PROACTIVE_TICKET") return source.includes("PROACTIVE") && source.includes("TICKET");
+                        if (sel === "PROACTIVE_OHI") return (source.includes("PROACTIVE") && source.includes("OHI")) || source.startsWith("PROMAN-");
+                        if (sel === "INFRACARE") return source.includes("INFRACARE");
+                        if (sel === "REGULER") {
+                            const isProactiveTicket = source.includes("PROACTIVE") && source.includes("TICKET");
+                            const isProactiveOhi = (source.includes("PROACTIVE") && source.includes("OHI")) || source.startsWith("PROMAN-");
+                            const isInfracare = source.includes("INFRACARE");
+                            return !isProactiveTicket && !isProactiveOhi && !isInfracare;
+                        }
+                        return false;
+                    });
+                }
+
+                const matchesWorkzone = selectedWorkzones.length === 0 || selectedWorkzones.includes(workzone);
+
+                // Customer Type Filter Logic
+                const custType = (wo.customer_type || wo.customerType || "REGULER").toUpperCase();
+                const matchesCustType = selectedCustTypes.length === 0 || selectedCustTypes.some(ct => custType.includes(ct.replace("HVC ", "")));
+
+                let matchesDate = true;
+                if (dateFilter && (wo.reported_date || wo.reportedDate)) {
+                    const woDate = new Date(wo.reported_date || wo.reportedDate).toISOString().slice(0, 10);
+                    matchesDate = woDate === dateFilter;
+                } else if (dateFilter) {
+                    matchesDate = false;
+                }
+
+                // Status Filter Logic - Multi-select
+                let matchesStatus = true;
+                const ageHours = getTicketAgeHours(wo);
+                if (selectedStatuses.length > 0) {
+                    matchesStatus = selectedStatuses.some(sel => {
+                        if (sel === "expired") return ageHours > 24 && !closedStatuses.includes(status);
+                        if (sel === "nearExpired") return ageHours >= 12 && ageHours <= 24 && !closedStatuses.includes(status);
+                        if (sel === "active") return ageHours < 12 && !closedStatuses.includes(status);
+                        if (sel === "closed") return closedStatuses.includes(status);
+                        return false;
+                    });
+                }
+
+                // Technician filter
+                let matchesTech = true;
+                if (window.activeTechFilter) {
+                    const assigned = wo.assigned_to || wo.assignedTo;
+                    if (assigned && assigned !== '[]' && assigned !== '') {
+                        try {
+                            const parsed = typeof assigned === 'string' ? JSON.parse(assigned) : assigned;
+                            const techs = Array.isArray(parsed) ? parsed : [parsed];
+                            matchesTech = techs.some(t => {
+                                const name = typeof t === 'object' ? (t.nama || t.name) : t;
+                                return name === window.activeTechFilter;
+                            });
+                        } catch (e) {
+                            matchesTech = false;
+                        }
+                    } else {
+                        matchesTech = false;
+                    }
+                }
+
+                // HD filter
+                let matchesHd = true;
+                if (window.activeHdFilter) {
+                    matchesHd = wo.assigned_by === window.activeHdFilter || wo.last_update_by === window.activeHdFilter;
+                }
+
+                return matchesSearch && matchesSegment && matchesSource && matchesStatus && matchesWorkzone && matchesCustType && matchesDate && matchesTech && matchesHd;
+            });
+
+            // Sort so active tickets are at the top
+            window.filteredWorkOrders.sort((a, b) => {
+                const aStatus = (a.status || a.TicketStatus || "").toUpperCase();
+                const bStatus = (b.status || b.TicketStatus || "").toUpperCase();
+                const aClosed = closedStatuses.includes(aStatus);
+                const bClosed = closedStatuses.includes(bStatus);
+                if (aClosed && !bClosed) return 1;
+                if (!aClosed && bClosed) return -1;
+                return 0; // Keep original order otherwise
+            });
+
+            window.currentPage = 1;
+            window.renderWorkOrders();
+        } catch (err) {
+            console.error("[Dashboard] applyFilters ERROR:", err);
+        }
+    }
+
+    // View state: 'open' or 'closed'
+    window.currentView = 'open';
+
+    window.fetchWorkOrders = async function() {
+        const syncBtn = document.getElementById("syncNow");
+
+        try {
+            // TIDAK cleanup setiap fetch — terlalu berat (lock timeout)
+            // Cleanup hanya dilakukan manual atau saat teknisi close tiket
+
+            // Fetch from internal Astro API with view parameter
+            const response = await fetch(`/api/insera-tickets?view=${window.currentView}`);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                window.allWorkOrders = data;
+                console.log(`[Dashboard] Fetched ${window.allWorkOrders.length} ${window.currentView} records. Refreshing UI...`);
+                window.applyFilters();
+                window.updateStats();
+                window.fetchTechStats && window.fetchTechStats();
+
+                // Update Last Sync UI
+                const lastSyncEl = document.getElementById("lastSyncInfo");
+                if (lastSyncEl) {
+                    lastSyncEl.textContent = "Last checked: " + new Date().toLocaleTimeString("id-ID");
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch work orders via internal API:", error);
+            // If API fails, ensure we still have what we started with
+            if (window.allWorkOrders.length === 0 && initialWorkOrders.length > 0) {
+                window.allWorkOrders = [...initialWorkOrders];
+                window.applyFilters();
+            }
+        } finally {
+            if (syncBtn) syncBtn.classList.remove("animate-spin");
+        }
+    }
+
+    // Toggle view function
+    window.toggleView = function() {
+        window.currentView = window.currentView === 'open' ? 'closed' : 'open';
+        const viewLabel = document.getElementById('viewLabel');
+        const toggleBtn = document.getElementById('toggleViewBtn');
+
+        if (viewLabel) viewLabel.textContent = `View: ${window.currentView === 'open' ? 'Open' : 'Closed'}`;
+        if (toggleBtn) {
+            if (window.currentView === 'closed') {
+                toggleBtn.classList.add('bg-amber-500/10', 'text-amber-600', 'border-amber-500/30');
+            } else {
+                toggleBtn.classList.remove('bg-amber-500/10', 'text-amber-600', 'border-amber-500/30');
+            }
+        }
+
+        window.fetchWorkOrders();
+    }
+
+
+    window.openEditModal = async function (id) {
+        try {
+            const response = await fetch(`/api/insera-tickets?id=${id}`);
+            const wo = await response.json();
+
+
+            if (wo.error || wo.status === "error") {
+                alert(wo.error || wo.message);
+                return;
+            }
+
+            // Populate form
+            document.getElementById("editId").value = id.toString();
+            document.getElementById("editOrderId").value = wo.order_id || wo.orderId || "";
+            document.getElementById("editCustomerType").value = wo.customer_type || wo.customerType || "REGULER";
+            document.getElementById("editTicketType").value = wo.ticket_type || wo.ticketType || "REGULER";
+            document.getElementById("editSummary").value = wo.summary || wo.title || wo.description || "";
+            document.getElementById("editContactPhone").value = wo.contact_phone || wo.contactPhone || "";
+            document.getElementById("editServiceNo").value = wo.service_no || wo.serviceNo || "";
+            document.getElementById("editTeam").value = wo.team || "";
+            document.getElementById("editWorkzone").value = wo.workzone || wo.workZone || "";
+            document.getElementById("editNotesHd").value = wo.notes_hd || wo.notesHd || "";
+
+
+            const reportedDate = wo.reported_date || wo.reportedDate;
+            if (reportedDate) {
+                const rd = new Date(reportedDate);
+                if (!isNaN(rd)) document.getElementById("editReportedDate").value = rd.toISOString().slice(0, 16);
+            }
+            const bookingDate = wo.booking_date || wo.bookingDate;
+            if (bookingDate) {
+                const bd = new Date(bookingDate);
+                if (!isNaN(bd)) document.getElementById("editBookingDate").value = bd.toISOString().slice(0, 16);
+            }
+
+            document.getElementById("editModal")?.classList.remove("hidden");
+        } catch (error) {
+            alert("Gagal memuat work order");
+        }
+    };
+
+    window.openSendModal = async function (id, orderId) {
+        document.getElementById("sendWorkOrderId").value = id.toString();
+        document.getElementById("sendWorkOrderIdDisplay").textContent = orderId;
+        // Simpan orderId juga untuk fallback lookup
+        document.getElementById("sendWorkOrderId").dataset.orderId = orderId;
+        
+        // Fetch groups
+        try {
+            const res = await fetch(`${API_URL}/api/telegram-groups`);
+            const data = await res.json();
+            const select = document.getElementById("sendGroupSelect");
+            select.innerHTML = '<option value="">-- Pilih Grup Tujuan --</option>';
+            if (data.success && data.data) {
+                data.data.forEach(g => {
+                    const opt = document.createElement("option");
+                    opt.value = g.group_id;
+                    opt.textContent = g.service_area;
+                    select.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            console.error("Failed to fetch groups", e);
+        }
+
+        document.getElementById("sendModal")?.classList.remove("hidden");
+    };
+
+
+    window.sendToTelegram = async function (id, chatId) {
+        if (!chatId) {
+            alert("Silakan pilih grup terlebih dahulu");
+            return;
+        }
+        try {
+            // Ambil order_id dari dataset (INC...) untuk fallback lookup
+            const sendIdEl = document.getElementById("sendWorkOrderId");
+            const orderId = sendIdEl?.dataset?.orderId || id;
+
+            // Cari data tiket dari allWorkOrders untuk dikirim ke BACKEND
+            // (tiket mungkin sudah dihapus dari scraped_work_orders setelah assign)
+            const woData = (window.allWorkOrders || []).find(w => w.id == id || w.order_id === orderId || w.orderId === orderId);
+
+            // Parse assigned_to dari data tiket
+            let assignedTo = [];
+            if (woData?.assigned_to) {
+                try {
+                    const parsed = typeof woData.assigned_to === 'string' ? JSON.parse(woData.assigned_to) : woData.assigned_to;
+                    assignedTo = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+                } catch (e) { assignedTo = []; }
+            }
+
+            const response = await fetch(`${API_URL}/api/workorders/${orderId}/send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    chatId,
+                    actorName: `HD - ${CURRENT_USER}`,
+                    assignedTo,
+                    // Kirim data tiket langsung sebagai fallback jika tidak ada di DB
+                    ticket: woData ? {
+                        order_id:         woData.order_id || woData.orderId,
+                        service_no:       woData.service_no || woData.serviceNo,
+                        contact_phone:    woData.contact_phone || woData.contactPhone,
+                        customer_type:    woData.customer_type || woData.customerType,
+                        workzone:         woData.workzone,
+                        device_name:      woData.device_name || woData.deviceName,
+                        rk_information:   woData.rk_information || woData.rkInformation,
+                        summary:          woData.summary,
+                        reported_date:    woData.reported_date || woData.reportedDate,
+                        reported_by:      woData.reported_by || woData.reportedBy,
+                        ttr_customer:     woData.ttr_customer || woData.ttrCustomer,
+                        expired_date:     woData.expired_date || woData.expiredDate,
+                        booking_date:     woData.booking_date || woData.bookingDate,
+                        status:           woData.status,
+                        assigned_by:      woData.assigned_by || woData.assignedBy,
+                        service_area:     woData.service_area || woData.serviceArea,
+                    } : null
+                }),
+            });
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                alert("Work order berhasil dikirim ke Telegram!");
+                document.getElementById("sendModal")?.classList.add("hidden");
+            } else {
+                alert(result.error || result.message || "Gagal mengirim ke Telegram");
+            }
+        } catch (error) {
+            alert("Gagal menghubungi server");
+        }
+    };
+
+
+    window.updateWorkOrderTeam = async function (id, teamName) {
+        try {
+            const response = await fetch(`${API_URL}/api/workorders/${id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ team: teamName }),
+            });
+
+            const result = await response.json();
+            if (!result.success && result.status !== "success") {
+                alert("Gagal update tim: " + (result.error || result.message || "Unknown error"));
+                window.fetchWorkOrders(); // revert
+            } else {
+                const wo = window.allWorkOrders.find((w) => w.id === id);
+                if (wo) wo.team = teamName;
+            }
+        } catch (error) {
+            alert("Gagal update tim. Periksa koneksi.");
+            window.fetchWorkOrders();
+        }
+    };
+
+    function closeEditModal() {
+        document.getElementById("editModal")?.classList.add("hidden");
+    }
+
+    async function saveWorkOrder(e) {
+        e.preventDefault();
+
+        const id = document.getElementById("editId").value;
+        const updates = {
+            customer_type: document.getElementById("editCustomerType").value,
+            summary: document.getElementById("editSummary").value,
+            contact_phone: document.getElementById("editContactPhone").value,
+            service_no: document.getElementById("editServiceNo").value,
+            team: document.getElementById("editTeam").value,
+            workzone: document.getElementById("editWorkzone").value,
+            notes_hd: document.getElementById("editNotesHd").value,
+            reported_date: document.getElementById("editReportedDate").value || null,
+            booking_date: document.getElementById("editBookingDate").value || null,
+        };
+
+        try {
+            const response = await fetch("/api/insera-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: 'update', id, actorName: CURRENT_USER, data: updates }),
+            });
+
+
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                closeEditModal();
+                window.fetchWorkOrders();
+            } else {
+                alert(result.error || result.message || "Gagal menyimpan (Pastikan API Workorders tersedia)");
+            }
+        } catch (error) {
+            alert("Gagal menyimpan work order");
+        }
+    }
+
+    async function deleteWorkOrder() {
+        const id = document.getElementById("editId").value;
+
+        if (!confirm("Yakin ingin menghapus work order ini?")) {
+            return;
+        }
+
+        try {
+            const response = await fetch("/api/insera-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: 'delete', id }),
+            });
+
+
+            const result = await response.json();
+
+            if (result.success || result.status === 'success') {
+                closeEditModal();
+                window.fetchWorkOrders();
+            } else {
+                alert(result.error || result.message || "Gagal hapus data");
+            }
+        } catch (error) {
+            alert("Gagal menghapus work order");
+        }
+    }
+
+    let selectedNakers = [];
+
+    // ── Bulk Select Logic ─────────────────────────────────────────────
+    let bulkSelectedIds = new Set();
+    let bulkSelectedNakers = [];
+
+    console.log("[Bulk] Initializing bulk select logic...");
+
+    function updateBulkBar() {
+        const bar = document.getElementById("bulkActionBar");
+        const countEl = document.getElementById("bulkSelectedCount");
+        if (!bar || !countEl) return;
+        if (bulkSelectedIds.size > 0) {
+            bar.classList.remove("hidden");
+            countEl.textContent = `${bulkSelectedIds.size} tiket dipilih`;
+        } else {
+            bar.classList.add("hidden");
+        }
+    }
+
+    // Delegated event for bulk checkboxes (re-rendered on each renderWorkOrders)
+    document.addEventListener("change", (e) => {
+        const target = e.target;
+        if (target.classList && target.classList.contains("bulk-checkbox")) {
+            const id = parseInt(target.dataset.woId || "0");
+            if (target.checked) bulkSelectedIds.add(id);
+            else bulkSelectedIds.delete(id);
+            updateBulkBar();
+            // Sync select-all state
+            const allCbs = document.querySelectorAll(".bulk-checkbox");
+            const allChecked = allCbs.length > 0 && [...allCbs].every((cb) => cb.checked);
+            const selectAll = document.getElementById("selectAllCheckbox");
+            if (selectAll) selectAll.checked = allChecked;
+        }
+    });
+
+    document.getElementById("selectAllCheckbox")?.addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        document.querySelectorAll(".bulk-checkbox").forEach((cb) => {
+            cb.checked = checked;
+            const id = parseInt(cb.dataset.woId || "0");
+            if (checked) bulkSelectedIds.add(id);
+            else bulkSelectedIds.delete(id);
+        });
+        updateBulkBar();
+    });
+
+    // Re-sync checkboxes after renderWorkOrders (since DOM is replaced)
+    const _origRender = window.renderWorkOrders;
+    window.renderWorkOrders = function() {
+        if (_origRender) _origRender();
+        // Re-check previously selected
+        document.querySelectorAll(".bulk-checkbox").forEach((cb) => {
+            const id = parseInt(cb.dataset.woId || "0");
+            if (bulkSelectedIds.has(id)) cb.checked = true;
+        });
+        const allCbs = document.querySelectorAll(".bulk-checkbox");
+        const selectAll = document.getElementById("selectAllCheckbox");
+        if (selectAll && allCbs.length > 0) {
+            selectAll.checked = [...allCbs].every((cb) => cb.checked);
+        }
+    };
+
+    document.getElementById("bulkClearBtn")?.addEventListener("click", () => {
+        bulkSelectedIds.clear();
+        document.querySelectorAll(".bulk-checkbox").forEach((cb) => {
+            cb.checked = false;
+        });
+        const selectAll = document.getElementById("selectAllCheckbox");
+        if (selectAll) selectAll.checked = false;
+        updateBulkBar();
+    });
+
+    // ── Bulk Assign & Send Modal ──────────────────────────────────────
+    function renderBulkNakerList(search = "") {
+        const container = document.getElementById("bulkNakerListContainer");
+        if (!container) return;
+        const filtered = nakerList.filter(n =>
+            !search ||
+            n.nama.toLowerCase().includes(search.toLowerCase()) ||
+            n.nik.includes(search)
+        );
+        container.innerHTML = filtered.map(n => `
+            <label class="flex items-center gap-3 p-2 rounded-xl hover:bg-surface-container-high cursor-pointer transition-colors ${bulkSelectedNakers.includes(n.nik) ? 'bg-primary/5' : ''}">
+                <div class="relative">
+                    <input type="checkbox" class="sr-only peer" ${bulkSelectedNakers.includes(n.nik) ? 'checked' : ''} onchange="toggleBulkNaker('${n.nik}')" />
+                    <div class="w-5 h-5 rounded border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-[14px] leading-none ${bulkSelectedNakers.includes(n.nik) ? '' : 'hidden'}">check</span>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-on-surface truncate">${n.nama}</p>
+                    <p class="text-[10px] text-on-surface-variant uppercase font-bold">${n.nik} • ${n.sektor || '-'}</p>
+                </div>
+            </label>
+        `).join("");
+    }
+
+    window.toggleBulkNaker = function(nik) {
+        const idx = bulkSelectedNakers.indexOf(nik);
+        if (idx >= 0) bulkSelectedNakers.splice(idx, 1);
+        else bulkSelectedNakers.push(nik);
+        renderBulkNakerList(document.getElementById("bulkNakerSearch")?.value || "");
+        updateBulkPreview();
+    };
+
+    function buildBulkPreviewMsg() {
+        const selectedWOs = (window.allWorkOrders || []).filter(wo => bulkSelectedIds.has(wo.id));
+        const assignedNames = nakerList.filter(n => bulkSelectedNakers.includes(n.nik));
+        if (selectedWOs.length === 0) return "(Belum ada tiket dipilih)";
+
+        const sep = "━━━━━━━━━━━━━━━━";
+        let msg = `🔔 MORENA TICKET ALERT 🔔\n${sep}\n`;
+
+        selectedWOs.forEach((wo, idx) => {
+            const now = new Date();
+            const reported = wo.reported_date || wo.reportedDate;
+            let ticketAge = "-";
+            if (reported) {
+                const diffMs = now - new Date(reported);
+                const h = Math.floor(diffMs / (1000 * 60 * 60));
+                const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                ticketAge = `${h}h ${m}m`;
+            }
+            const typeMatch = (wo.summary || "").match(/\[(.*?)\]/);
+            const ticketType = typeMatch ? typeMatch[1] : (wo.ticket_type || "REGULER");
+            const tier = wo.customer_type || "REGULER";
+
+            msg += `${idx + 1}. 📋 INC ID: ${wo.order_id || wo.orderId || '-'}  \n`;
+            msg += `📞 No Internet: ${wo.service_no || wo.serviceNo || '-'}\n`;
+            msg += `⚙️ Status: ASSIGNED\n`;
+            msg += `🏆 Tier: 🥇 ${tier} \n`;
+            msg += `🎫 Tipe Tiket: ${ticketType}\n`;
+            msg += `📱 CP: ${wo.contact_phone || wo.contactPhone || '-'}\n`;
+            msg += `📍 Workzone: ${wo.workzone || '-'}\n`;
+            msg += `📡 ODP: ${wo.device_name || wo.deviceName || '-'}\n`;
+            msg += `🏢 ODC: ${wo.rk_information || wo.rkInformation || '-'}\n`;
+            msg += `⏱️ Umur Tiket: ${ticketAge}\n`;
+            msg += `${sep}\n`;
+            msg += `📝 Summary:\n${wo.summary || '-'}  \n`;
+            msg += `${sep}\n`;
+        });
+
+        msg += `👤 ASSIGNED BY: HD - ${CURRENT_USER}\n`;
+        msg += `👥 ASSIGNED TO:\n`;
+        assignedNames.forEach((n, i) => {
+            msg += `${i + 1}. ${n.nama}${n.tag_telegram ? '@' + n.tag_telegram.replace('@','') : ''}\n`;
+        });
+        msg += `${sep}\n`;
+        msg += `Teknisi Yang Di Assign Tiket ini Dapat Mengupdate/Close Tiketnya melalui MY TICKET pada Bot Morena Terimakasih ^^`;
+        return msg;
+    }
+
+    function updateBulkPreview() {
+        const previewEl = document.getElementById("bulkMsgPreview");
+        if (previewEl && !previewEl.classList.contains("hidden")) {
+            previewEl.textContent = buildBulkPreviewMsg();
+        }
+    }
+
+    document.getElementById("togglePreviewBtn")?.addEventListener("click", () => {
+        const previewEl = document.getElementById("bulkMsgPreview");
+        const btn = document.getElementById("togglePreviewBtn");
+        if (!previewEl || !btn) return;
+        if (previewEl.classList.contains("hidden")) {
+            previewEl.classList.remove("hidden");
+            previewEl.textContent = buildBulkPreviewMsg();
+            btn.textContent = "Sembunyikan";
+        } else {
+            previewEl.classList.add("hidden");
+            btn.textContent = "Tampilkan";
+        }
+    });
+
+    document.getElementById("bulkNakerSearch")?.addEventListener("input", (e) => {
+        renderBulkNakerList(e.target.value);
+    });
+
+    document.getElementById("bulkAssignSendBtn")?.addEventListener("click", () => {
+        if (bulkSelectedIds.size === 0) return;
+        bulkSelectedNakers = [];
+        // Populate ticket list
+        const selectedWOs = (window.allWorkOrders || []).filter(wo => bulkSelectedIds.has(wo.id));
+        const ticketListEl = document.getElementById("bulkTicketList");
+        if (ticketListEl) {
+            ticketListEl.innerHTML = selectedWOs.map(wo => `
+                <div class="flex items-center gap-2 px-3 py-1.5 bg-surface-container-high rounded-lg">
+                    <span class="material-symbols-outlined text-primary text-[14px]">confirmation_number</span>
+                    <span class="font-mono text-xs font-bold text-primary">${wo.order_id || wo.orderId}</span>
+                    <span class="text-[10px] text-on-surface-variant truncate flex-1">${(wo.summary || '').substring(0, 40)}${(wo.summary || '').length > 40 ? '...' : ''}</span>
+                </div>
+            `).join("");
+        }
+        const subtitleEl = document.getElementById("bulkModalSubtitle");
+        if (subtitleEl) subtitleEl.textContent = `${bulkSelectedIds.size} tiket dipilih`;
+        // Reset preview
+        const previewEl = document.getElementById("bulkMsgPreview");
+        if (previewEl) { previewEl.classList.add("hidden"); }
+        const toggleBtn = document.getElementById("togglePreviewBtn");
+        if (toggleBtn) toggleBtn.textContent = "Tampilkan";
+        renderBulkNakerList();
+        document.getElementById("bulkAssignModal")?.classList.remove("hidden");
+    });
+
+    function closeBulkModal() {
+        document.getElementById("bulkAssignModal")?.classList.add("hidden");
+    }
+
+    document.getElementById("closeBulkModal")?.addEventListener("click", closeBulkModal);
+    document.getElementById("cancelBulkBtn")?.addEventListener("click", closeBulkModal);
+    document.getElementById("bulkAssignModal")?.addEventListener("click", (e) => {
+        if (e.target === document.getElementById("bulkAssignModal")) closeBulkModal();
+    });
+
+    document.getElementById("saveBulkAssignBtn")?.addEventListener("click", async () => {
+        if (bulkSelectedIds.size === 0) { alert("Tidak ada tiket yang dipilih"); return; }
+        if (bulkSelectedNakers.length === 0) { alert("Pilih minimal 1 teknisi"); return; }
+
+        const btn = document.getElementById("saveBulkAssignBtn");
+        if (!btn) return;
+        const originalContent = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">sync</span> Memproses...';
+
+        const fullAssigned = nakerList.filter(n => bulkSelectedNakers.includes(n.nik)).map(n => ({
+            nik: n.nik,
+            nama: n.nama,
+            sektor: n.sektor,
+            tag_telegram: n.tag_telegram
+        }));
+
+        const selectedWOs = (window.allWorkOrders || []).filter(wo => bulkSelectedIds.has(wo.id));
+
+        try {
+            const response = await fetch("/api/insera-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'bulk_assign_send',
+                    ids: [...bulkSelectedIds],
+                    assignedTo: fullAssigned,
+                    assignedBy: CURRENT_USER,
+                    tickets: selectedWOs
+                }),
+            });
+
+            const result = await response.json();
+            if (result.success || result.status === 'success') {
+                closeBulkModal();
+                bulkSelectedIds.clear();
+                document.querySelectorAll(".bulk-checkbox").forEach((cb) => {
+                    cb.checked = false;
+                });
+                const selectAll = document.getElementById("selectAllCheckbox");
+                if (selectAll) selectAll.checked = false;
+                updateBulkBar();
+                window.fetchWorkOrders();
+                alert(`✅ Berhasil assign ${selectedWOs.length} tiket dan kirim notifikasi Telegram!`);
+            } else {
+                alert(result.error || result.message || "Gagal bulk assign");
+            }
+        } catch (error) {
+            alert("Gagal: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    });
+    // ── End Bulk Logic ────────────────────────────────────────────────
+
+    window.openAssignModal = function(id, orderId) {
+        document.getElementById("assignWorkOrderId").value = id;
+        document.getElementById("assignOrderIdDisplay").textContent = orderId;
+        
+        const wo = window.allWorkOrders.find(w => w.id === id);
+        if (wo) {
+            let current = [];
+            try {
+                if (wo.assigned_to) {
+                    const parsed = typeof wo.assigned_to === 'string' ? JSON.parse(wo.assigned_to) : wo.assigned_to;
+                    current = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+                }
+            } catch (e) { current = []; }
+            selectedNakers = current.map(a => typeof a === 'object' ? (a.nik || a.id) : a);
+        } else {
+            selectedNakers = [];
+        }
+        
+        renderNakerList();
+        document.getElementById("assignModal").classList.remove("hidden");
+    };
+
+    function renderNakerList(search = "") {
+        const container = document.getElementById("nakerListContainer");
+        if (!container) return;
+
+        const filtered = nakerList.filter(n => 
+            !search || 
+            n.nama.toLowerCase().includes(search.toLowerCase()) || 
+            n.nik.includes(search)
+        );
+
+        container.innerHTML = filtered.map(n => `
+            <label class="flex items-center gap-3 p-2 rounded-xl hover:bg-surface-container-high cursor-pointer transition-colors ${selectedNakers.includes(n.nik) ? 'bg-primary/5' : ''}">
+                <div class="relative">
+                    <input type="checkbox" class="sr-only peer" ${selectedNakers.includes(n.nik) ? 'checked' : ''} onchange="toggleNakerSelection('${n.nik}')" />
+                    <div class="w-5 h-5 rounded border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-[14px] leading-none ${selectedNakers.includes(n.nik) ? '' : 'hidden'}">check</span>
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-on-surface truncate">${n.nama}</p>
+                    <p class="text-[10px] text-on-surface-variant uppercase font-bold">${n.nik} • ${n.sektor || '-'}</p>
+                </div>
+            </label>
+        `).join("");
+    }
+
+    window.toggleNakerSelection = function(nik) {
+        const idx = selectedNakers.indexOf(nik);
+        if (idx >= 0) selectedNakers.splice(idx, 1);
+        else selectedNakers.push(nik);
+        // Refresh styles without full re-render if possible, but list is small so full is fine
+        renderNakerList(document.getElementById("nakerSearch")?.value || "");
+    };
+
+    document.getElementById("nakerSearch")?.addEventListener("input", (e) => {
+        renderNakerList(e.target.value);
+    });
+
+    document.getElementById("saveAssignBtn")?.addEventListener("click", async () => {
+        const id = document.getElementById("assignWorkOrderId").value;
+        const btn = document.getElementById("saveAssignBtn");
+        const originalContent = btn.innerHTML;
+        
+        // Find naker objects
+        const fullAssigned = nakerList.filter(n => selectedNakers.includes(n.nik)).map(n => ({
+            nik: n.nik,
+            nama: n.nama,
+            sektor: n.sektor,
+            tag_telegram: n.tag_telegram
+        }));
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">sync</span> Updating...';
+
+        try {
+            const response = await fetch("/api/insera-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    action: 'assign',
+                    id: id,
+                    assignedTo: fullAssigned,
+                    assignedBy: CURRENT_USER
+                }),
+            });
+
+
+            const result = await response.json();
+            if (result.success || result.status === 'success') {
+                document.getElementById("assignModal").classList.add("hidden");
+                alert(`✅ Tiket berhasil di-assign ke ${fullAssigned.map(n => n.nama).join(', ')}!`);
+                window.fetchWorkOrders();
+            } else {
+                alert(result.error || result.message);
+            }
+        } catch (error) {
+            console.error("DEBUG ASSIGN ERROR:", error);
+            alert("Gagal update assignment (Browser Catch): " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    });
+
+    // ── Workzone Filter Panel ─────────────────────────────────────────
+    function renderWorkzoneCheckboxes(search = "") {
+        const list = document.getElementById("workzoneCheckboxList");
+        if (!list) return;
+        
+        const filtered = ALL_WORKZONES.filter(wz => wz.toLowerCase().includes(search.toLowerCase()));
+        
+        list.innerHTML = filtered.map(wz => `
+            <label class="flex items-center gap-3 cursor-pointer group py-1">
+                <div class="relative">
+                    <input type="checkbox" data-wz="${wz}" ${selectedWorkzones.includes(wz) ? "checked" : ""} class="sr-only peer" />
+                    <div class="w-4 h-4 rounded border border-border-color bg-surface-container-high peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-[10px] leading-none ${selectedWorkzones.includes(wz) ? "" : "hidden"}">check</span>
+                    </div>
+                </div>
+                <span class="text-xs font-bold text-on-surface group-hover:text-primary transition-colors">${wz}</span>
+            </label>
+        `).join("");
+
+        list.querySelectorAll("input[data-wz]").forEach(chk => {
+            chk.addEventListener("change", () => {
+                const wz = chk.dataset.wz;
+                if (chk.checked) {
+                    if (!selectedWorkzones.includes(wz)) selectedWorkzones.push(wz);
+                } else {
+                    selectedWorkzones = selectedWorkzones.filter(x => x !== wz);
+                }
+                updateWorkzoneLabel();
+                window.applyFilters();
+            });
+        });
+    }
+
+    function updateWorkzoneLabel() {
+        const label = document.getElementById("workzoneFilterLabel");
+        if (!label) return;
+        if (selectedWorkzones.length === 0) label.textContent = "Workzone: All";
+        else if (selectedWorkzones.length === 1) label.textContent = `Workzone: ${selectedWorkzones[0]}`;
+        else label.textContent = `Workzone: ${selectedWorkzones.length} Selected`;
+    }
+
+    document.getElementById("workzoneFilterBtn")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const panel = document.getElementById("workzoneFilterPanel");
+        panel.classList.toggle("hidden");
+        if (!panel.classList.contains("hidden")) renderWorkzoneCheckboxes();
+    });
+
+    document.getElementById("workzoneSearch")?.addEventListener("input", (e) => {
+        renderWorkzoneCheckboxes(e.target.value);
+    });
+
+    document.getElementById("wzSelectAll")?.addEventListener("click", () => {
+        selectedWorkzones = [...ALL_WORKZONES];
+        updateWorkzoneLabel();
+        renderWorkzoneCheckboxes(document.getElementById("workzoneSearch")?.value || "");
+        window.applyFilters();
+    });
+
+    document.getElementById("wzClearAll")?.addEventListener("click", () => {
+        selectedWorkzones = [];
+        updateWorkzoneLabel();
+        renderWorkzoneCheckboxes(document.getElementById("workzoneSearch")?.value || "");
+        window.applyFilters();
+    });
+
+    // ── Customer Type Filter Panel ─────────────────────────────────────
+    function renderCustTypeCheckboxes(search = "") {
+        const list = document.getElementById("custTypeCheckboxList");
+        if (!list) return;
+
+        const filtered = ALL_CUST_TYPES.filter(ct => ct.toLowerCase().includes(search.toLowerCase()));
+
+        const getColorClass = (ct) => {
+            if (ct.includes("PLATINUM")) return "text-purple-600";
+            if (ct.includes("DIAMOND")) return "text-blue-600";
+            if (ct.includes("GOLD")) return "text-amber-600";
+            return "text-on-surface-variant";
+        };
+
+        list.innerHTML = filtered.map(ct => `
+            <label class="flex items-center gap-3 cursor-pointer group py-1">
+                <div class="relative">
+                    <input type="checkbox" value="${ct}" ${selectedCustTypes.includes(ct) ? "checked" : ""}
+                        class="sr-only peer"
+                        onchange="window.toggleCustType('${ct}')" />
+                    <div class="w-5 h-5 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                        <span class="material-symbols-outlined text-white text-[14px] leading-none ${selectedCustTypes.includes(ct) ? "" : "hidden"}">check</span>
+                    </div>
+                </div>
+                <span class="text-sm font-bold ${getColorClass(ct)}">${ct}</span>
+            </label>
+        `).join("");
+    }
+
+    window.toggleCustType = function(ct) {
+        const idx = selectedCustTypes.indexOf(ct);
+        if (idx >= 0) selectedCustTypes.splice(idx, 1);
+        else selectedCustTypes.push(ct);
+        updateCustTypeLabel();
+        renderCustTypeCheckboxes(document.getElementById("custTypeSearch")?.value || "");
+        window.applyFilters();
+    };
+
+    function updateCustTypeLabel() {
+        const label = document.getElementById("custTypeFilterLabel");
+        if (!label) return;
+        if (selectedCustTypes.length === 0) label.textContent = "Cust Type: All";
+        else if (selectedCustTypes.length === 1) label.textContent = `Cust Type: ${selectedCustTypes[0]}`;
+        else label.textContent = `Cust Type: ${selectedCustTypes.length} Selected`;
+    }
+
+    document.getElementById("custTypeFilterBtn")?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const panel = document.getElementById("custTypeFilterPanel");
+        panel.classList.toggle("hidden");
+        if (!panel.classList.contains("hidden")) renderCustTypeCheckboxes();
+    });
+
+    document.getElementById("custTypeSearch")?.addEventListener("input", (e) => {
+        renderCustTypeCheckboxes(e.target.value);
+    });
+
+    document.getElementById("ctSelectAll")?.addEventListener("click", () => {
+        selectedCustTypes = [...ALL_CUST_TYPES];
+        updateCustTypeLabel();
+        renderCustTypeCheckboxes(document.getElementById("custTypeSearch")?.value || "");
+        window.applyFilters();
+    });
+
+    document.getElementById("ctClearAll")?.addEventListener("click", () => {
+        selectedCustTypes = [];
+        updateCustTypeLabel();
+        renderCustTypeCheckboxes(document.getElementById("custTypeSearch")?.value || "");
+        window.applyFilters();
+    });
+
+    document.addEventListener("click", (e) => {
+        const wrapper = document.getElementById("workzoneFilterWrapper");
+        if (wrapper && !wrapper.contains(e.target)) {
+            document.getElementById("workzoneFilterPanel")?.classList.add("hidden");
+        }
+        const ctWrapper = document.getElementById("custTypeFilterWrapper");
+        if (ctWrapper && !ctWrapper.contains(e.target)) {
+            document.getElementById("custTypeFilterPanel")?.classList.add("hidden");
+        }
+        const assignModal = document.getElementById("assignModal");
+        if (e.target === assignModal) assignModal.classList.add("hidden");
+    });
+
+    document.getElementById("closeAssignModal")?.addEventListener("click", () => document.getElementById("assignModal").classList.add("hidden"));
+    document.getElementById("cancelAssignBtn")?.addEventListener("click", () => document.getElementById("assignModal").classList.add("hidden"));
+
+    // Column Resize Functionality
+    function setupColumnResize() {
+        const table = document.querySelector('#workOrdersTable')?.closest('table');
+        if (!table) return;
+
+        const headers = table.querySelectorAll('th[data-col]');
+        headers.forEach(th => {
+            // Add resize handle
+            const handle = document.createElement('div');
+            handle.className = 'resize-handle';
+            th.appendChild(handle);
+
+            let startX, startWidth, colIndex;
+
+            handle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                startX = e.pageX;
+                startWidth = th.offsetWidth;
+                colIndex = Array.from(headers).indexOf(th);
+                
+                handle.classList.add('resizing');
+                table.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+
+                const onMouseMove = (e) => {
+                    const diff = e.pageX - startX;
+                    const newWidth = Math.max(50, startWidth + diff); // Minimum 50px
+                    th.style.width = newWidth + 'px';
+                    th.style.minWidth = newWidth + 'px';
+                    
+                    // Update all cells in this column
+                    const rows = table.querySelectorAll('tbody tr');
+                    rows.forEach(row => {
+                        const cell = row.cells[colIndex];
+                        if (cell) {
+                            cell.style.width = newWidth + 'px';
+                            cell.style.minWidth = newWidth + 'px';
+                        }
+                    });
+                };
+
+                const onMouseUp = () => {
+                    handle.classList.remove('resizing');
+                    table.classList.remove('resizing');
+                    document.body.style.cursor = '';
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        console.log("[Init] DOMContentLoaded fired");
+        console.log("[Init] initialWorkOrders count:", initialWorkOrders.length);
+        
+        // --- INITIAL RENDER ---
+        // Load initial data from SSR immediately so the list isn't empty while waiting for API
+        window.allWorkOrders = [...initialWorkOrders];
+        window.filteredWorkOrders = [...window.allWorkOrders];
+        
+        console.log("[Init] window.allWorkOrders count:", window.allWorkOrders.length);
+        
+        // Initial render logic moved to window functions
+        window.applyFilters();
+        
+        console.log("[Init] After applyFilters, filteredWorkOrders count:", window.filteredWorkOrders.length);
+        
+        // Setup column resize after table rendered
+        setTimeout(setupColumnResize, 500);
+        window.updateStats();
+
+        // Load dynamic data
+        loadNaker();
+        window.fetchWorkOrders();
+
+        setInterval(window.fetchWorkOrders, 120000);
+
+
+        document.getElementById("syncNow")?.addEventListener("click", window.fetchWorkOrders);
+        document.getElementById("toggleViewBtn")?.addEventListener("click", window.toggleView);
+        document.getElementById("searchInput")?.addEventListener("input", window.applyFilters);
+        document.getElementById("filterDate")?.addEventListener("change", window.applyFilters);
+
+        // Segment Filter Panel Toggle
+        document.getElementById("segmentFilterBtn")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById("segmentFilterPanel");
+            panel.classList.toggle("hidden");
+        });
+
+        // Source Filter Panel Toggle
+        document.getElementById("sourceFilterBtn")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById("sourceFilterPanel");
+            panel.classList.toggle("hidden");
+        });
+
+        // Status Filter Panel Toggle
+        document.getElementById("statusFilterBtn")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById("statusFilterPanel");
+            panel.classList.toggle("hidden");
+        });
+
+        // Segment Select All / Clear
+        document.getElementById("segSelectAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-seg]').forEach(cb => cb.checked = true);
+            updateSegmentLabel();
+            window.applyFilters();
+        });
+
+        document.getElementById("segClearAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-seg]').forEach(cb => cb.checked = false);
+            updateSegmentLabel();
+            window.applyFilters();
+        });
+
+        // Source Select All / Clear
+        document.getElementById("srcSelectAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-src]').forEach(cb => cb.checked = true);
+            updateSourceLabel();
+            window.applyFilters();
+        });
+
+        document.getElementById("srcClearAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-src]').forEach(cb => cb.checked = false);
+            updateSourceLabel();
+            window.applyFilters();
+        });
+
+        // Status Select All / Clear
+        document.getElementById("stSelectAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-st]').forEach(cb => cb.checked = true);
+            updateStatusLabel();
+            window.applyFilters();
+        });
+
+        document.getElementById("stClearAll")?.addEventListener("click", () => {
+            document.querySelectorAll('input[data-st]').forEach(cb => cb.checked = false);
+            updateStatusLabel();
+            window.applyFilters();
+        });
+
+        // Checkbox change handlers for Segment, Source, Status
+        document.querySelectorAll('input[data-seg], input[data-src], input[data-st]').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (cb.dataset.seg) updateSegmentLabel();
+                if (cb.dataset.src) updateSourceLabel();
+                if (cb.dataset.st) updateStatusLabel();
+                window.applyFilters();
+            });
+        });
+
+        // Click outside to close panels
+        document.addEventListener("click", (e) => {
+            const segWrapper = document.getElementById("segmentFilterWrapper");
+            if (segWrapper && !segWrapper.contains(e.target)) {
+                document.getElementById("segmentFilterPanel")?.classList.add("hidden");
+            }
+            const srcWrapper = document.getElementById("sourceFilterWrapper");
+            if (srcWrapper && !srcWrapper.contains(e.target)) {
+                document.getElementById("sourceFilterPanel")?.classList.add("hidden");
+            }
+            const stWrapper = document.getElementById("statusFilterWrapper");
+            if (stWrapper && !stWrapper.contains(e.target)) {
+                document.getElementById("statusFilterPanel")?.classList.add("hidden");
+            }
+        });
+
+        // Update label functions
+        function updateSegmentLabel() {
+            const checked = Array.from(document.querySelectorAll('input[data-seg]:checked')).map(cb => cb.value);
+            const label = document.getElementById("segmentFilterLabel");
+            if (checked.length === 0) label.textContent = "Segment: All";
+            else if (checked.length === 1) label.textContent = `Segment: ${checked[0]}`;
+            else label.textContent = `Segment: ${checked.length} Selected`;
+        }
+
+        function updateSourceLabel() {
+            const checked = Array.from(document.querySelectorAll('input[data-src]:checked')).map(cb => cb.value);
+            const label = document.getElementById("sourceFilterLabel");
+            if (checked.length === 0) label.textContent = "Source: All";
+            else if (checked.length === 1) label.textContent = `Source: ${checked[0]}`;
+            else label.textContent = `Source: ${checked.length} Selected`;
+        }
+
+        function updateStatusLabel() {
+            const checked = Array.from(document.querySelectorAll('input[data-st]:checked')).map(cb => cb.value);
+            const label = document.getElementById("statusFilterLabel");
+            if (checked.length === 0) label.textContent = "Status: All";
+            else if (checked.length === 1) label.textContent = `Status: ${checked[0]}`;
+            else label.textContent = `Status: ${checked.length} Selected`;
+        }
+
+        // Initial fetch for tech stats (optional)
+        window.fetchTechStats && window.fetchTechStats();
+
+        function syncEditTicketTypePreview() {
+            const s = document.getElementById("editSummary")?.value || "";
+            const el = document.getElementById("editTicketType");
+            if (el) el.value = s.includes("[SQM]") ? "SQM" : "REGULER";
+        }
+        document.getElementById("editSummary")?.addEventListener("input", syncEditTicketTypePreview);
+
+        // ── Column Picker ───────────────────────────────────────────────
+        // Definition moved up to prevent ReferenceError
+
+        function renderCheckboxes() {
+            const list = document.getElementById("colCheckboxList");
+            if (!list) return;
+            list.innerHTML = COLUMN_DEFS.map(col => `
+                <label class="flex items-center gap-3 cursor-pointer group py-0.5">
+                    <div class="relative">
+                        <input type="checkbox" data-col-key="${col.key}"
+                            ${colPrefs[col.key] !== false ? "checked" : ""}
+                            class="sr-only peer" />
+                        <div class="w-4 h-4 rounded border border-border-color bg-surface-container-high peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white text-[12px] leading-none ${colPrefs[col.key] !== false ? "" : "hidden"}">check</span>
+                        </div>
+                    </div>
+                    <span class="text-sm font-bold text-on-surface group-hover:text-primary transition-colors">${col.label}</span>
+                </label>
+            `).join("");
+
+            list.querySelectorAll("input[data-col-key]").forEach(chk => {
+                chk.addEventListener("change", () => {
+                    const key = chk.dataset.colKey;
+                    colPrefs[key] = chk.checked;
+                    // toggle checkmark icon
+                    const icon = chk.parentElement.querySelector("span");
+                    if (icon) icon.classList.toggle("hidden", !chk.checked);
+                    saveColPrefs();
+                    applyColumnVisibility();
+                });
+            });
+        }
+
+        // Toggle panel
+        document.getElementById("colPickerBtn")?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const panel = document.getElementById("colPickerPanel");
+            if (!panel) return;
+            const isHidden = panel.classList.contains("hidden");
+            panel.classList.toggle("hidden", !isHidden);
+            if (isHidden) renderCheckboxes();
+        });
+
+        // Close on outside click
+        document.addEventListener("click", (e) => {
+            const wrapper = document.getElementById("colPickerWrapper");
+            if (wrapper && !wrapper.contains(e.target)) {
+                document.getElementById("colPickerPanel")?.classList.add("hidden");
+            }
+        });
+
+        // Select All
+        document.getElementById("colSelectAll")?.addEventListener("click", () => {
+            COLUMN_DEFS.forEach(c => colPrefs[c.key] = true);
+            saveColPrefs();
+            renderCheckboxes();
+            applyColumnVisibility();
+        });
+
+        // Reset to default
+        document.getElementById("colResetDefault")?.addEventListener("click", () => {
+            COLUMN_DEFS.forEach(c => colPrefs[c.key] = c.default);
+            saveColPrefs();
+            renderCheckboxes();
+            applyColumnVisibility();
+        });
+
+        // Apply on page load
+        applyColumnVisibility();
+
+        // ── Real-time Ticket Age Timer ──────────────────────────────────
+        function updateAllTicketAges() {
+            const elements = document.querySelectorAll(".ticket-age");
+            const now = new Date();
+            
+            elements.forEach(el => {
+                const reportedStr = el.dataset.reported;
+                if (!reportedStr) {
+                    el.textContent = "--:--:--";
+                    return;
+                }
+                
+                try {
+                    const reported = new Date(reportedStr);
+                    const diffMs = now - reported;
+                    
+                    if (diffMs < 0) {
+                        el.textContent = "00:00:00";
+                        return;
+                    }
+                    
+                    const totalSec = Math.floor(diffMs / 1000);
+                    const hours = Math.floor(totalSec / 3600);
+                    const mins = Math.floor((totalSec % 3600) / 60);
+                    const secs = totalSec % 60;
+                    
+                    const hStr = hours.toString().padStart(2, "0");
+                    const mStr = mins.toString().padStart(2, "0");
+                    const sStr = secs.toString().padStart(2, "0");
+                    
+                    el.textContent = `${hStr}:${mStr}:${sStr}`;
+                    
+                    // Add subtle color coding based on age (optional premium touch)
+                    if (hours >= 12) el.style.color = "var(--error)";
+                    else if (hours >= 4) el.style.color = "#ffca28"; // Amber
+                    else el.style.color = "";
+                } catch (e) {
+                    el.textContent = "ERR";
+                }
+            });
+        }
+
+        // Start timer
+        setInterval(updateAllTicketAges, 1000);
+        updateAllTicketAges();
+        // ── /Real-time Ticket Age Timer ─────────────────────────────────
+        // ── /Column Picker ──────────────────────────────────────────────
+
+        document.getElementById("exportXlsx")?.addEventListener("click", () => {
+            window.open(`${API_URL}/api/workorders/export`, "_blank");
+        });
+
+        document.getElementById("deleteAll")?.addEventListener("click", async () => {
+            if (!confirm("ANDA YAKIN INGIN MENGHAPUS SEMUA WORK ORDERS? INI TIDAK BISA DIBATALKAN!")) {
+                return;
+            }
+
+            const btn = document.getElementById("deleteAll");
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined text-[20px] animate-spin">progress_activity</span><span>Deleting...</span>';
+            btn.disabled = true;
+
+            try {
+                // Direct delete via Frontend API
+                const response = await fetch("/api/insera-tickets", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: 'delete_all' })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    window.fetchWorkOrders();
+                    alert(`Berhasil menghapus seluruh data work orders`);
+                } else {
+                    alert(result.error || result.message || "Gagal menghapus data");
+                }
+            } catch (error) {
+                alert("Gagal menghubungi server database untuk menghapus data");
+            } finally {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+            }
+
+        });
+
+        document.getElementById("prevPage")?.addEventListener("click", () => {
+            if (window.currentPage > 1) {
+                window.currentPage--;
+                window.renderWorkOrders();
+            }
+        });
+
+        document.getElementById("nextPage")?.addEventListener("click", () => {
+            const maxPages = Math.ceil((window.filteredWorkOrders || []).length / window.pageSize);
+            if (window.currentPage < maxPages) {
+                window.currentPage++;
+                window.renderWorkOrders();
+            }
+        });
+
+        document.getElementById("closeModal")?.addEventListener("click", closeEditModal);
+        document.getElementById("cancelEditBtn")?.addEventListener("click", closeEditModal);
+        document.getElementById("editForm")?.addEventListener("submit", saveWorkOrder);
+        document.getElementById("deleteBtn")?.addEventListener("click", deleteWorkOrder);
+
+        document.getElementById("editModal")?.addEventListener("click", (e) => {
+            if (e.target === document.getElementById("editModal")) {
+                closeEditModal();
+            }
+        });
+
+        document.getElementById("closeSendModal")?.addEventListener("click", () => {
+            document.getElementById("sendModal")?.classList.add("hidden");
+        });
+
+        document.getElementById("cancelSendBtn")?.addEventListener("click", () => {
+            document.getElementById("sendModal")?.classList.add("hidden");
+        });
+
+        document.getElementById("sendModal")?.addEventListener("click", (e) => {
+            if (e.target === document.getElementById("sendModal")) {
+                document.getElementById("sendModal")?.classList.add("hidden");
+            }
+        });
+
+        document.getElementById("confirmSendBtn")?.addEventListener("click", async () => {
+            const id = document.getElementById("sendWorkOrderId").value;
+            const chatId = document.getElementById("sendGroupSelect").value;
+            const btn = document.getElementById("confirmSendBtn");
+
+            const originalContent = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">progress_activity</span> Mengirim...';
+
+            try {
+                await window.sendToTelegram(id, chatId);
+            } catch (err) {
+                console.error("Send Flow Error:", err);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalContent;
+            }
+        });
+
+
+
+        document.getElementById("addManual")?.addEventListener("click", () => {
+            const now = new Date();
+            const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+            document.getElementById("addReportedDate").value = localIso;
+
+            document.getElementById("addOrderId").value = "";
+            document.getElementById("addSummary").value = "";
+            document.getElementById("addWorkzone").value = "";
+            document.getElementById("addCustomerSegment").value = "";
+            document.getElementById("addTeam").value = "";
+            document.getElementById("addCustomerType").value = "REGULER";
+
+            document.getElementById("addModal")?.classList.remove("hidden");
+        });
+
+        document.getElementById("closeAddModal")?.addEventListener("click", () => {
+            document.getElementById("addModal")?.classList.add("hidden");
+        });
+
+        document.getElementById("cancelAddBtn")?.addEventListener("click", () => {
+            document.getElementById("addModal")?.classList.add("hidden");
+        });
+
+        document.getElementById("addModal")?.addEventListener("click", (e) => {
+            if (e.target === document.getElementById("addModal")) {
+                document.getElementById("addModal")?.classList.add("hidden");
+            }
+        });
+
+        document.getElementById("addForm")?.addEventListener("submit", async (e) => {
+            e.preventDefault();
+
+            const orderId = document.getElementById("addOrderId").value.trim();
+            const summary = document.getElementById("addSummary").value.trim();
+
+            if (!orderId || !summary) {
+                alert("NO INC dan Summary wajib diisi");
+                return;
+            }
+
+            // Check for duplicate ticket
+            try {
+                const checkRes = await fetch("/api/insera-tickets", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: 'check_duplicate', orderId })
+                });
+                const checkResult = await checkRes.json();
+
+                if (checkResult.exists) {
+                    // Ticket already exists - show alert with details
+                    const lastUpdateBy = checkResult.data?.lastUpdateBy || 'Unknown';
+                    const status = checkResult.data?.status || 'OPEN';
+                    const isClosed = ['CLOSED', 'RESOLVED', 'CANCELLED'].includes(status.toUpperCase());
+                    
+                    let alertMsg = `⚠️ TIKET SUDAH ADA!\n\n`;
+                    alertMsg += `Tiket ${orderId} sudah ${isClosed ? 'di-CLOSE' : 'ada'} oleh @${lastUpdateBy}\n`;
+                    alertMsg += `Status: ${status}\n`;
+                    if (checkResult.data?.summary) {
+                        alertMsg += `Summary: ${checkResult.data.summary}\n`;
+                    }
+                    
+                    if (isClosed) {
+                        alertMsg += `\nTiket yang sudah di-CLOSE tidak bisa di-input ulang.`;
+                        alert(alertMsg);
+                        return;
+                    } else {
+                        alertMsg += `\nApakah Anda ingin melanjutkan input (akan mengupdate data)?`;
+                        if (!confirm(alertMsg)) {
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("[Add Manual] Duplicate check error:", err);
+                // Continue anyway if check fails
+            }
+
+            const workOrder = {
+                orderId: orderId,
+                summary: summary,
+                customerType: document.getElementById("addCustomerType").value,
+                workzone: document.getElementById("addWorkzone").value || null,
+                customerSegment: document.getElementById("addCustomerSegment").value || null,
+                reportedDate: document.getElementById("addReportedDate").value || null,
+                team: document.getElementById("addTeam").value || null,
+                actorName: CURRENT_USER 
+            };
+
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalHTML = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">sync</span> Menyimpan...';
+
+            try {
+                const response = await fetch(`${API_URL}/api/workorders`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(workOrder),
+                });
+
+                const result = await response.json();
+
+                if (result.success || result.status === 'success') {
+                    document.getElementById("addModal")?.classList.add("hidden");
+                    window.fetchWorkOrders();
+                    alert("Work order manual berhasil ditambahkan.");
+                } else {
+                    alert(result.error || result.message || "Gagal menambahkan data.");
+                }
+            } catch (error) {
+                alert("Gagal menambahkan work order (API belum tersedia)");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            }
+        });
+
+    });
+
+    // Return Ticket Modal Functions
+    let currentReturnId = null;
+    let currentReturnOrderId = null;
+    let currentReturnAssignedTo = [];
+
+    window.returnTicket = async function(id, orderId) {
+        // Cari data tiket
+        const wo = window.allWorkOrders.find(w => w.id === id);
+        if (!wo) {
+            alert("Data tiket tidak ditemukan");
+            return;
+        }
+
+        currentReturnId = id;
+        currentReturnOrderId = orderId;
+
+        // Parse assigned_to untuk mendapatkan daftar teknisi
+        const assigned = wo.assigned_to || wo.assignedTo;
+        currentReturnAssignedTo = [];
+        if (assigned && assigned !== '[]') {
+            try {
+                const parsed = typeof assigned === 'string' ? JSON.parse(assigned) : assigned;
+                currentReturnAssignedTo = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (e) {}
+        }
+
+        // Isi modal dengan data tiket
+        document.getElementById('returnTicketId').textContent = orderId;
+        document.getElementById('returnTicketSummary').textContent = wo.summary || '-';
+        document.getElementById('returnTicketWorkzone').textContent = wo.workzone || '-';
+        document.getElementById('returnTicketCustType').textContent = wo.customer_type || wo.customerType || 'REGULER';
+
+        // Tampilkan daftar teknisi yang di-assign
+        const assignedListEl = document.getElementById('returnAssignedList');
+        if (currentReturnAssignedTo.length > 0) {
+            const techNames = currentReturnAssignedTo.map(t => {
+                const name = typeof t === 'object' ? (t.nama || t.name) : t;
+                const tag = typeof t === 'object' ? (t.tag_telegram || t.tagTelegram) : null;
+                return tag ? `${name} (${tag})` : name;
+            });
+            assignedListEl.innerHTML = techNames.map(n => `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary">${n}</span>`).join(' ');
+        } else {
+            assignedListEl.innerHTML = '<span class="text-[11px] italic text-error">Belum di-assign ke teknisi manapun</span>';
+        }
+
+        // Reset catatan
+        document.getElementById('returnNotes').value = '';
+
+        // Tampilkan modal
+        document.getElementById('returnModal').classList.remove('hidden');
+    };
+
+    window.closeReturnModal = function() {
+        document.getElementById('returnModal').classList.add('hidden');
+        currentReturnId = null;
+        currentReturnOrderId = null;
+        currentReturnAssignedTo = [];
+    };
+
+    window.confirmReturnTicket = async function() {
+        if (!currentReturnId) return;
+
+        const notes = document.getElementById('returnNotes').value.trim();
+        if (!notes) {
+            alert("Harap isi catatan untuk pemilik/penanggung jawab tiket");
+            return;
+        }
+
+        const btn = document.getElementById('confirmReturnBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">sync</span> Memproses...';
+
+        try {
+            const response = await fetch("/api/insera-tickets", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: 'return_ticket',
+                    id: currentReturnId,
+                    actorName: CURRENT_USER,
+                    notes: notes,
+                    assignedTo: currentReturnAssignedTo
+                }),
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert("Tiket berhasil di-return. Notifikasi telah dikirim ke grup dan teknisi terkait.");
+                closeReturnModal();
+                window.fetchWorkOrders();
+            } else {
+                alert(result.message || "Gagal return tiket.");
+            }
+        } catch (e) {
+            alert("Error: " + e.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    };
+</script>

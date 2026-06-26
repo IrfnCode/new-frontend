@@ -1,0 +1,184 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import pool from "../../lib/db";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const username = Astro.cookies.get("admin_user")?.value || "Unknown";
+
+const allowedRoles = ["ADMIN", "KORLAP", "HSA", "HD KORLAP", "HELPDESK", "HD"];
+if (!role || !allowedRoles.includes(role)) {
+    return Astro.redirect("/admin/login");
+}
+
+let serviceAreas: string[] = [];
+try {
+    const [rows]: any = await pool.query("SELECT DISTINCT service_area FROM naker WHERE service_area IS NOT NULL AND service_area != '' ORDER BY service_area");
+    serviceAreas = rows.map((r: any) => r.service_area);
+} catch (e) {
+    console.error("Gagal memuat service area:", e);
+}
+---
+
+<Layout title="MORENA Admin - Data Tiket Morena">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="data-morena" />
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-primary text-2xl">database</span>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-primary font-headline">Data Tiket Morena</h2>
+                        <p class="text-xs text-on-surface-variant">Laporan Tiket Berdasarkan Service Area</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <select id="areaFilter" class="bg-surface-container-high border border-border-color rounded-xl px-3 py-2 text-sm font-bold min-w-[150px]">
+                        <option value="">Semua Service Area</option>
+                        {serviceAreas.map(area => (
+                            <option value={area}>{area}</option>
+                        ))}
+                    </select>
+                    <input type="month" id="monthFilter" class="bg-surface-container-high border border-border-color rounded-xl px-3 py-2 text-sm font-bold" />
+                    
+                    <button onclick="exportXLSX()" class="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all shadow-md">
+                        <span class="material-symbols-outlined text-[18px]">download</span> Export XLSX
+                    </button>
+                    <button onclick="loadData()" class="flex items-center gap-2 px-4 py-2 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold transition-all shadow-md">
+                        <span class="material-symbols-outlined text-[18px]">search</span> Tampilkan
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8">
+                <!-- Stats -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-5">
+                        <p class="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest">Total Tiket Ditemukan</p>
+                        <p id="statTotal" class="text-3xl font-black font-headline text-primary mt-1">0</p>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-5">
+                        <p class="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest">Service Area</p>
+                        <p id="statArea" class="text-xl font-black font-headline text-on-surface mt-1">-</p>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color p-5">
+                        <p class="text-[10px] font-bold uppercase text-on-surface-variant tracking-widest">Periode Bulan</p>
+                        <p id="statMonth" class="text-xl font-black font-headline text-on-surface mt-1">-</p>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden">
+                    <div class="overflow-x-auto max-h-[60vh]">
+                        <table class="w-full text-sm whitespace-nowrap">
+                            <thead class="bg-surface-container-low text-xs uppercase font-black text-on-surface-variant sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">No Tiket</th>
+                                    <th class="px-4 py-3 text-left">No INET</th>
+                                    <th class="px-4 py-3 text-left">Service Area</th>
+                                    <th class="px-4 py-3 text-left">Sektor</th>
+                                    <th class="px-4 py-3 text-left">Teknisi (NIK)</th>
+                                    <th class="px-4 py-3 text-left">Tanggal Open</th>
+                                    <th class="px-4 py-3 text-left">Jenis Tiket</th>
+                                    <th class="px-4 py-3 text-left">ODP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-border-color">
+                                <tr><td colspan="8" class="px-4 py-12 text-center text-on-surface-variant">Silahkan pilih Service Area dan Bulan, lalu klik Tampilkan.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</Layout>
+
+<script is:inline>
+    let currentData = [];
+
+    // Format tanggal
+    function formatWIB(dateStr) {
+        if (!dateStr || dateStr === '0000-00-00 00:00:00') return '-';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const pad = (n) => String(n).padStart(2,'0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function exportXLSX() {
+        const area = document.getElementById('areaFilter').value;
+        const month = document.getElementById('monthFilter').value;
+        
+        const params = new URLSearchParams();
+        if (area) params.set('service_area', area);
+        if (month) params.set('month', month);
+
+        // Redirect ke endpoint export
+        window.location.href = '/api/export-tiket-morena?' + params.toString();
+    }
+
+    // Load Data Tiket Morena
+    async function loadData() {
+        const area = document.getElementById('areaFilter').value;
+        const month = document.getElementById('monthFilter').value;
+        const tbody = document.getElementById('tableBody');
+
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-12 text-center text-on-surface-variant font-bold">Memuat data...</td></tr>';
+        
+        try {
+            const params = new URLSearchParams();
+            if (area) params.set('service_area', area);
+            if (month) params.set('month', month);
+            params.set('_t', Date.now().toString());
+
+            const res = await fetch('/api/get-tiket-morena?' + params.toString());
+            const result = await res.json();
+
+            if (result.success) {
+                currentData = result.data || [];
+                document.getElementById('statTotal').textContent = currentData.length;
+                document.getElementById('statArea').textContent = area || 'Semua Area';
+                document.getElementById('statMonth').textContent = month || 'Semua Bulan';
+                renderTable();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-12 text-center text-error font-bold">Gagal: ${result.message}</td></tr>`;
+            }
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-12 text-center text-error font-bold">Terjadi kesalahan koneksi.</td></tr>`;
+        }
+    }
+
+    function renderTable() {
+        const tbody = document.getElementById('tableBody');
+        if (!currentData.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-12 text-center text-on-surface-variant font-bold">Tidak ada data ditemukan</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = currentData.map(d => `
+            <tr class="hover:bg-surface-container-low transition-colors">
+                <td class="px-4 py-3 font-mono font-bold text-primary text-xs">${d.no_tiket || '-'}</td>
+                <td class="px-4 py-3 font-mono text-xs">${d.no_inet || '-'}</td>
+                <td class="px-4 py-3 text-xs font-bold">${d.service_area || '-'}</td>
+                <td class="px-4 py-3 text-xs">${d.sektor || '-'}</td>
+                <td class="px-4 py-3">
+                    <p class="font-bold text-xs">${d.nama || '-'}</p>
+                    <p class="text-[10px] text-on-surface-variant">${d.nik_teknisi || d.nik_teknisi_from_naker || '-'}</p>
+                </td>
+                <td class="px-4 py-3 text-xs">${formatWIB(d.jam_open)}</td>
+                <td class="px-4 py-3 text-xs">${d.jenis || '-'}</td>
+                <td class="px-4 py-3 text-xs max-w-[200px] truncate" title="${d.odp || ''}">${d.odp || '-'}</td>
+            </tr>
+        `).join('');
+    }
+
+    // Init
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2,'0');
+    document.getElementById('monthFilter').value = `${today.getFullYear()}-${pad(today.getMonth() + 1)}`;
+    
+    // Load tabel pertama kali
+    loadData();
+</script>

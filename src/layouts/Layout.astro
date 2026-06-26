@@ -1,0 +1,242 @@
+---
+const { title, useTelegram = false } = Astro.props;
+const assetVersion = "v3";
+---
+
+<!doctype html>
+<html lang="id">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="description" content="MORENA - Sistem Tiket Operasional" />
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1.0, user-scalable=no"
+		/>
+		<link
+			rel="icon"
+			type="image/png"
+			href={`/favicon.png?${assetVersion}`}
+		/>
+		<meta name="generator" content={Astro.generator} />
+		<title>{title}</title>
+
+		<!-- Fonts & Icons -->
+		<link href="https://fonts.googleapis.com" rel="preconnect" />
+		<link
+			crossorigin=""
+			href="https://fonts.gstatic.com"
+			rel="preconnect"
+		/>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+			rel="stylesheet"
+		/>
+		<link
+			href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+			rel="stylesheet"
+		/>
+
+		{
+			useTelegram && (
+				<script src="https://telegram.org/js/telegram-web-app.js" />
+			)
+		}
+	</head>
+	<body
+		class="bg-surface text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed antialiased transition-colors duration-300"
+	>
+		<div class="flex flex-col min-h-screen">
+			<div class="flex-grow">
+				<slot />
+			</div>
+
+			<footer
+				class="py-8 border-t border-border-color/50 bg-surface-container-low/50 backdrop-blur-md mt-12"
+			>
+				<div class="max-w-7xl mx-auto px-6 text-center space-y-3">
+					<div
+						class="flex items-center justify-center gap-3 opacity-40"
+					>
+						<span class="w-6 h-[1px] bg-on-surface-variant"></span>
+						<span
+							class="text-[9px] font-black uppercase tracking-[0.3em] text-on-surface-variant"
+							>Operational Support</span
+						>
+						<span class="w-6 h-[1px] bg-on-surface-variant"></span>
+					</div>
+					<p
+						class="text-[10px] font-bold text-on-surface-variant tracking-wide"
+					>
+						© {new Date().getFullYear()}
+						<span class="text-primary font-black">MORENA</span>
+						<span class="mx-2 opacity-30">|</span>
+						Developed By <span class="text-primary font-black"
+							>TA BATAM</span
+						>. All rights reserved.
+					</p>
+				</div>
+			</footer>
+		</div>
+
+		<script is:inline>
+			// Theme handling (Class-based for Tailwind)
+			const theme = localStorage.getItem("theme") || "light";
+			if (theme === "dark") {
+				document.documentElement.classList.add("dark");
+				document.documentElement.classList.remove("light");
+			} else {
+				document.documentElement.classList.add("light");
+				document.documentElement.classList.remove("dark");
+			}
+
+			window.toggleTheme = () => {
+				const isDark =
+					document.documentElement.classList.contains("dark");
+				const next = isDark ? "light" : "dark";
+
+				if (next === "dark") {
+					document.documentElement.classList.add("dark");
+					document.documentElement.classList.remove("light");
+				} else {
+					document.documentElement.classList.add("light");
+					document.documentElement.classList.remove("dark");
+				}
+
+				localStorage.setItem("theme", next);
+			};
+		</script>
+	</body>
+</html>
+
+<style is:global>
+	@tailwind base;
+	@tailwind components;
+	@tailwind utilities;
+
+	.material-symbols-outlined {
+		font-variation-settings:
+			"FILL" 0,
+			"wght" 400,
+			"GRAD" 0,
+			"opsz" 24;
+	}
+
+	.glass-card {
+		background: rgba(var(--surface-rgb), 0.7);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+	}
+
+	:root {
+		--surface-rgb: 247, 249, 251;
+		--on-surface: #191c1e;
+		--surface-container-lowest: #ffffff;
+		--tertiary-container: #00668b;
+		--on-primary-fixed-variant: #0040a1;
+		--surface-bright: #f7f9fb;
+		--secondary-container: #d5e0f8;
+		--tertiary-fixed: #c4e7ff;
+		--on-primary: #ffffff;
+		--on-error-container: #93000a;
+		--surface-dim: #d8dadc;
+		--primary-container: #0056d2;
+		--surface-variant: #e0e3e5;
+		--primary: #0040a1;
+		--primary-fixed-dim: #b2c5ff;
+		--inverse-surface: #2d3133;
+		--inverse-primary: #b2c5ff;
+		--on-tertiary: #ffffff;
+		--tertiary: #004d69;
+		--secondary-fixed: #d8e3fb;
+		--secondary-fixed-dim: #bcc7de;
+		--surface-container-high: #e6e8ea;
+		--surface-container-highest: #e0e3e5;
+		--error-container: #ffdad6;
+		--on-tertiary-fixed: #001e2c;
+		--tertiary-fixed-dim: #7bd0ff;
+		--on-secondary: #ffffff;
+		--surface-container-low: #f2f4f6;
+		--on-tertiary-container: #aee0ff;
+		--on-primary-fixed: #001847;
+		--inverse-on-surface: #eff1f3;
+		--surface: #f7f9fb;
+		--on-tertiary-fixed-variant: #004c69;
+		--surface-container: #eceef0;
+		--on-surface-variant: #424654;
+		--on-error: #ffffff;
+		--secondary: #545f73;
+		--error: #ba1a1a;
+		--primary-fixed: #dae2ff;
+		--surface-tint: #0056d2;
+		--outline: #737785;
+		--on-secondary-fixed-variant: #3c475a;
+		--on-secondary-container: #586377;
+		--background: #f7f9fb;
+		--outline-variant: #c3c6d6;
+		--on-background: #191c1e;
+		--on-primary-container: #ccd8ff;
+		--on-secondary-fixed: #111c2d;
+		--border-color: #e0e3e5;
+	}
+
+	.dark {
+		--surface-rgb: 25, 28, 30;
+		--on-surface: #e1e2e4;
+		--surface-container-lowest: #0c0e0f;
+		--tertiary-container: #aee0ff;
+		--on-primary-fixed-variant: #b2c5ff;
+		--surface-bright: #343a3d;
+		--secondary-container: #3c475a;
+		--tertiary-fixed: #004d69;
+		--on-primary: #002f75;
+		--on-error-container: #ffdad6;
+		--surface-dim: #111415;
+		--primary-container: #0040a1;
+		--surface-variant: #424654;
+		--primary: #9dc2ff;
+		--primary-fixed-dim: #9dc2ff;
+		--inverse-surface: #f7f9fb;
+		--inverse-primary: #0040a1;
+		--on-tertiary: #00354b;
+		--tertiary: #7bd0ff;
+		--secondary-fixed: #3c475a;
+		--secondary-fixed-dim: #bcc7de;
+		--surface-container-high: #24292b;
+		--surface-container-highest: #2e3335;
+		--error-container: #93000a;
+		--on-tertiary-fixed: #aee0ff;
+		--tertiary-fixed-dim: #7bd0ff;
+		--on-secondary: #263143;
+		--surface-container-low: #191c1e;
+		--on-tertiary-container: #001e2c;
+		--on-primary-fixed: #b2c5ff;
+		--inverse-on-surface: #191c1e;
+		--surface: #191c1e;
+		--on-tertiary-fixed-variant: #00354b;
+		--surface-container: #1d2123;
+		--on-surface-variant: #c3c6d6;
+		--on-error: #690005;
+		--secondary: #bcc7de;
+		--error: #ffb4ab;
+		--primary-fixed: #0040a1;
+		--surface-tint: #9dc2ff;
+		--outline: #8c90a0;
+		--on-secondary-fixed-variant: #bcc7de;
+		--on-secondary-container: #d8e3fb;
+		--background: #191c1e;
+		--outline-variant: #424654;
+		--on-background: #e1e2e4;
+		--on-primary-container: #dae2ff;
+		--on-secondary-fixed: #d8e3fb;
+		--border-color: #424654;
+	}
+
+	/* Smooth transitions for theme toggle */
+	* {
+		transition-property:
+			color, background-color, border-color, text-decoration-color, fill,
+			stroke;
+		transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+		transition-duration: 200ms;
+	}
+</style>

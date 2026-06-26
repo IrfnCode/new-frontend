@@ -1,0 +1,889 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Sidebar from "../../components/Sidebar.astro";
+import { AdminController } from "../../lib/controllers/AdminController";
+
+const role = Astro.cookies.get("admin_role")?.value;
+const isAdmin = role === "ADMIN";
+const isKorlapHsa = role === "KORLAP" || role === "HSA" || role === "HD KORLAP";
+
+// Hanya ADMIN, KORLAP, HSA yang boleh akses configs
+if (!isAdmin && !isKorlapHsa) {
+    return Astro.redirect("/admin/tickets");
+}
+
+const groupsData = await AdminController.getGroups();
+const techniciansData = await AdminController.getTechnicians();
+---
+
+<Layout title="MORENA Admin - Configuration Dashboard">
+    <div class="flex min-h-screen font-body relative overflow-x-hidden">
+        <Sidebar activePage="configs" />
+
+        <main class="ml-[256px] flex-1 flex flex-col min-h-screen bg-surface transition-all duration-500 ease-[cubic-bezier(0.87,0,0.13,1)]">
+            <header class="sticky top-0 z-40 flex justify-between items-center px-8 py-4 w-full bg-surface/70 backdrop-blur-lg border-b border-border-color">
+                <div class="flex items-center gap-8">
+                    <h2 class="text-xl font-extrabold text-primary font-headline tracking-tight">System Configuration</h2>
+                    
+                    <!-- Tab Switcher -->
+                     <div class="flex bg-surface-container-high p-1 rounded-2xl border border-border-color flex-wrap">
+                        {isAdmin &&
+                            <button onclick="window.switchTab('groups')" id="tab-groups" class="tab-btn active px-5 py-2 rounded-xl text-xs font-bold transition-all">Router Map</button>
+                        }
+                        <button onclick="window.switchTab('perbaikan')" id="tab-perbaikan" class="tab-btn px-5 py-2 rounded-xl text-xs font-bold transition-all">Analisa Perbaikan</button>
+                        {/* Jenis Order: ADMIN + KORLAP/HSA */}
+                        <button onclick="window.switchTab('jenis')" id="tab-jenis" class="tab-btn px-5 py-2 rounded-xl text-xs font-bold transition-all">Jenis Order</button>
+                        <button onclick="window.switchTab('karyawan')" id="tab-karyawan" class="tab-btn px-5 py-2 rounded-xl text-xs font-bold transition-all">Karyawan</button>
+                        {isAdmin &&
+                            <>
+                                <button onclick="window.switchTab('mapping')" id="tab-mapping" class="tab-btn px-5 py-2 rounded-xl text-xs font-bold transition-all">Personnel Mapping</button>
+                                <button onclick="window.switchTab('accounts')" id="tab-accounts" class="tab-btn px-5 py-2 rounded-xl text-xs font-bold transition-all">Admin Accounts</button>
+                            </>
+                        }
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <button onclick="window.toggleTheme()" class="p-2 rounded-full hover:opacity-80 transition-opacity text-on-surface-variant">
+                        <span class="material-symbols-outlined">dark_mode</span>
+                    </button>
+                    <button id="addMainBtn" class="bg-primary text-white px-6 py-2.5 rounded-full font-bold flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all">
+                        <span class="material-symbols-outlined text-sm">add_circle</span>
+                        <span id="addBtnText">Link New Gateway</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="p-8 space-y-8">
+                <!-- Dynamic Content Sections -->
+                
+                <!-- SECTION: GROUPS -->
+                <section id="section-groups" class="content-section space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div class="p-6 bg-primary-container/10 rounded-2xl border border-primary/20 flex gap-5">
+                         <div class="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center text-primary grow-0 shrink-0"><span class="material-symbols-outlined">hub</span></div>
+                         <div>
+                            <h4 class="font-bold text-primary">Telegram Integration Mapping</h4>
+                            <p class="text-sm text-on-surface-variant">Map your service areas to Telegram group IDs for automatic ticket routing.</p>
+                         </div>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden shadow-sm">
+                        <table class="w-full text-left">
+                            <thead class="bg-surface-container-low/50 border-b border-border-color">
+                                <tr>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Service Area</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Gateway ID</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Status</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="groupTableBody" class="divide-y divide-border-color"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- SECTION: PERBAIKAN -->
+                <section id="section-perbaikan" class="content-section hidden space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div class="p-6 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 flex gap-5">
+                         <div class="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600 grow-0 shrink-0"><span class="material-symbols-outlined">analytics</span></div>
+                         <div>
+                            <h4 class="font-bold text-emerald-700">Repair Analysis Options (RCA)</h4>
+                            <p class="text-sm text-on-surface-variant">Define the dropdown options for technicians to select when analyzing a problem.</p>
+                         </div>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden shadow-sm">
+                        <table class="w-full text-left">
+                            <thead class="bg-surface-container-low/50 border-b border-border-color">
+                                <tr>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">ID</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Analisa Perbaikan / RCA</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="perbaikanTableBody" class="divide-y divide-border-color"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                 <!-- SECTION: JENIS -->
+                <section id="section-jenis" class="content-section hidden space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div class="p-6 bg-amber-500/5 rounded-2xl border border-amber-500/10 flex gap-5">
+                         <div class="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 grow-0 shrink-0"><span class="material-symbols-outlined">category</span></div>
+                         <div>
+                            <h4 class="font-bold text-amber-700">Ticket Category Configurations</h4>
+                            <p class="text-sm text-on-surface-variant">Manage the standard ticket categories used throughout the application.</p>
+                         </div>
+                    </div>
+                    <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden shadow-sm">
+                        <table class="w-full text-left">
+                            <thead class="bg-surface-container-low/50 border-b border-border-color">
+                                <tr>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">ID</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Jenis Order / Kategori</th>
+                                    <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="jenisTableBody" class="divide-y divide-border-color"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                {(isAdmin || isKorlapHsa) &&
+                    <!-- SECTION: KARYAWAN -->
+                    <section id="section-karyawan" class="content-section hidden space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <div class="p-6 bg-purple-500/5 rounded-2xl border border-purple-500/10 flex gap-5">
+                             <div class="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-600 grow-0 shrink-0"><span class="material-symbols-outlined">badge</span></div>
+                             <div>
+                                <h4 class="font-bold text-purple-700">Daftar Karyawan / Teknisi</h4>
+                                <p class="text-sm text-on-surface-variant">Kelola data karyawan dan teknisi yang aktif dalam sistem.</p>
+                             </div>
+                        </div>
+                        <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden shadow-sm">
+                            <table class="w-full text-left">
+                                <thead class="bg-surface-container-low/50 border-b border-border-color">
+                                    <tr>
+                                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">NIK</th>
+                                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Nama</th>
+                                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Sektor</th>
+                                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Tag Telegram</th>
+                                        <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="karyawanTableBody" class="divide-y divide-border-color"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                }
+
+                {isAdmin &&
+                    <>
+                        <!-- SECTION: MAPPING -->
+                        <section id="section-mapping" class="content-section hidden space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <div class="p-6 bg-blue-500/5 rounded-2xl border border-blue-500/10 flex gap-5">
+                                <div class="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-600 grow-0 shrink-0"><span class="material-symbols-outlined">map_search</span></div>
+                                <div>
+                                    <h4 class="font-bold text-blue-700">Korlap & HSA Personnel Mapping</h4>
+                                    <p class="text-sm text-on-surface-variant">Assign coordinators and helpdesk support specialized for each service area.</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 gap-6">
+                                {groupsData.map((group: any) => (
+                                    <div class="bg-surface-container-low border border-border-color rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group p-6">
+                                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                            <div class="space-y-1">
+                                                <h3 class="text-lg font-black text-primary font-headline tracking-tight uppercase">{group.service_area}</h3>
+                                                <div class="flex items-center gap-2">
+                                                    <span class="px-2 py-0.5 rounded-lg bg-surface-container-high text-[10px] font-bold text-on-surface-variant border border-border-color">GROUP ID: {group.group_id}</span>
+                                                    {group.is_active ? (
+                                                        <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-green-500/10 text-green-500 text-[10px] font-bold uppercase border border-green-500/20">
+                                                            <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                                                            Active
+                                                        </span>
+                                                    ) : (
+                                                        <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-error/10 text-error text-[10px] font-bold uppercase border border-error/20">Inactive</span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 flex-1 max-w-2xl">
+                                                <div class="space-y-3">
+                                                    <div class="flex justify-between items-center text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                                                        <span>KORLAP SEKTOR</span>
+                                                        <span class="text-primary opacity-60">Multi-Select Enabled</span>
+                                                    </div>
+                                                    <button 
+                                                        onclick={`window.openSelector(${group.id}, 'KORLAP', "${group.service_area.replace(/"/g, '&quot;')}")`}
+                                                        class="w-full bg-surface-container-highest border border-dashed border-border-color hover:border-primary rounded-2xl p-4 text-xs font-bold text-on-surface hover:text-primary transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <span class="material-symbols-outlined text-[20px]">add_circle</span>
+                                                        <span>Pilih Korlap</span>
+                                                    </button>
+
+                                                    <!-- LIST KORLAP -->
+                                                    <div class="space-y-2 mt-2">
+                                                        {group.korlap?.map((p: any) => (
+                                                            <div class="flex items-center justify-between bg-surface-container-high px-3 py-2 rounded-xl border border-border-color/50 group/item">
+                                                                <div class="flex flex-col">
+                                                                    <span class="text-[11px] font-black text-on-surface leading-none">{p.nama}</span>
+                                                                    <span class="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest opacity-60">{p.nik}</span>
+                                                                </div>
+                                                                <button 
+                                                                    onclick={`window.removePersonnel(${p.id})`}
+                                                                    class="p-1.5 hover:bg-error/10 text-on-surface-variant hover:text-error rounded-lg transition-all opacity-0 group-hover/item:opacity-100"
+                                                                >
+                                                                    <span class="material-symbols-outlined text-[16px]">close</span>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div class="space-y-3">
+                                                    <div class="flex justify-between items-center text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">
+                                                        <span>HSA SEKTOR</span>
+                                                        <span class="text-primary opacity-60">Multi-Select Enabled</span>
+                                                    </div>
+                                                    <button 
+                                                        onclick={`window.openSelector(${group.id}, 'HSA', "${group.service_area.replace(/"/g, '&quot;')}")`}
+                                                        class="w-full bg-surface-container-highest border border-dashed border-border-color hover:border-primary rounded-2xl p-4 text-xs font-bold text-on-surface hover:text-primary transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <span class="material-symbols-outlined text-[20px]">add_circle</span>
+                                                        <span>Pilih HSA</span>
+                                                    </button>
+
+                                                    <!-- LIST HSA -->
+                                                    <div class="space-y-2 mt-2">
+                                                        {group.hsa?.map((p: any) => (
+                                                            <div class="flex items-center justify-between bg-surface-container-high px-3 py-2 rounded-xl border border-border-color/50 group/item">
+                                                                <div class="flex flex-col">
+                                                                    <span class="text-[11px] font-black text-on-surface leading-none">{p.nama}</span>
+                                                                    <span class="text-[9px] font-bold text-on-surface-variant uppercase tracking-widest opacity-60">{p.nik}</span>
+                                                                </div>
+                                                                <button 
+                                                                    onclick={`window.removePersonnel(${p.id})`}
+                                                                    class="p-1.5 hover:bg-error/10 text-on-surface-variant hover:text-error rounded-lg transition-all opacity-0 group-hover/item:opacity-100"
+                                                                >
+                                                                    <span class="material-symbols-outlined text-[16px]">close</span>
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex items-center justify-center p-2 min-w-[40px]">
+                                                <div id={`status-${group.id}`} class="hidden opacity-0 transition-opacity duration-300">
+                                                    <span class="material-symbols-outlined text-green-500 text-[24px]">check_circle</span>
+                                                </div>
+                                                <div id={`loading-${group.id}`} class="hidden">
+                                                    <span class="material-symbols-outlined animate-spin text-primary text-[24px]">sync</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+
+                        <!-- SECTION: ACCOUNTS -->
+                        <section id="section-accounts" class="content-section hidden space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <div class="p-6 bg-purple-500/5 rounded-2xl border border-purple-500/10 flex gap-5">
+                                <div class="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-600 grow-0 shrink-0"><span class="material-symbols-outlined">shield_person</span></div>
+                                <div>
+                                    <h4 class="font-bold text-purple-700">Admin Account Access Management</h4>
+                                    <p class="text-sm text-on-surface-variant">Control who has access to this dashboard and define their permission levels.</p>
+                                </div>
+                            </div>
+                            <div class="bg-surface-container-lowest rounded-2xl border border-border-color overflow-hidden shadow-sm">
+                                <table class="w-full text-left">
+                                    <thead class="bg-surface-container-low/50 border-b border-border-color">
+                                        <tr>
+                                            <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Username</th>
+                                            <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Role Privilege</th>
+                                            <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest">Created At</th>
+                                            <th class="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="accountTableBody" class="divide-y divide-border-color"></tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </>
+                }
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL: GROUPS -->
+    <div id="groupModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-sm hidden">
+        <div class="bg-surface w-full max-w-lg rounded-3xl shadow-2xl border border-border-color overflow-hidden">
+            <div class="px-8 py-6 border-b border-border-color flex justify-between items-center">
+                <h3 class="text-xl font-black font-headline" id="groupModalTitle">Gateway Config</h3>
+                <button onclick="document.getElementById('groupModal').classList.add('hidden')" class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <form id="groupForm" class="p-8 space-y-6">
+                <input type="hidden" name="action" id="groupAction" value="add" />
+                <input type="hidden" name="id" id="groupId" />
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Area Unit</label>
+                        <input type="text" name="service_area" id="groupServiceArea" required class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none" />
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Telegram ID</label>
+                        <input type="text" name="group_id" id="groupTelegramId" required class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-mono border-none" />
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Routing Status</label>
+                        <select name="is_active" id="groupIsActive" class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none">
+                            <option value="1">Enabled</option>
+                            <option value="0">Disabled</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all uppercase tracking-widest text-xs">Commit Gateway</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: COMMON (For Perbaikan & Jenis) -->
+    <div id="commonModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-sm hidden">
+        <div class="bg-surface w-full max-w-md rounded-3xl shadow-2xl border border-border-color overflow-hidden">
+            <div class="px-8 py-6 border-b border-border-color flex justify-between items-center">
+                <h3 class="text-xl font-black font-headline" id="commonModalTitle">Configuration</h3>
+                <button onclick="document.getElementById('commonModal').classList.add('hidden')" class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <form id="commonForm" class="p-8 space-y-6">
+                <input type="hidden" name="type" id="commonType" />
+                <input type="hidden" name="action" id="commonAction" value="add" />
+                <input type="hidden" name="id" id="commonId" />
+                <div class="space-y-1">
+                    <label id="commonLabel" class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Label Name</label>
+                    <input type="text" name="name" id="commonName" required placeholder="Masukan nama..." class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none" />
+                </div>
+                <button type="submit" class="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all uppercase tracking-widest text-xs">Save Configuration</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ACCOUNTS -->
+    <div id="accountModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-sm hidden">
+        <div class="bg-surface w-full max-w-md rounded-3xl shadow-2xl border border-border-color overflow-hidden">
+            <div class="px-8 py-6 border-b border-border-color flex justify-between items-center">
+                <h3 class="text-xl font-black font-headline" id="accountModalTitle">Account</h3>
+                <button onclick="document.getElementById('accountModal').classList.add('hidden')" class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined">close</span></button>
+            </div>
+            <form id="accountForm" class="p-8 space-y-6">
+                <input type="hidden" name="action" id="accAction" value="create" />
+                <input type="hidden" name="id" id="accId" />
+                <div class="space-y-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Username</label>
+                        <input type="text" name="username" id="accUsername" required class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none" />
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Role</label>
+                        <select name="role" id="accRole" class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none">
+                            <option value="ADMIN">ADMIN</option>
+                            <option value="KORLAP">KORLAP</option>
+                            <option value="HSA">HSA</option>
+                            <option value="MEMBER">MEMBER</option>
+                            <option value="HELPDESK">HELPDESK</option>
+                            <option value="MODERATOR">MODERATOR</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] font-black uppercase tracking-widest text-on-surface-variant">Password</label>
+                        <input type="password" name="password" id="accPassword" class="w-full bg-surface-container-high rounded-2xl p-4 text-sm font-bold border-none" />
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all uppercase tracking-widest text-xs">Save Account</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: PERSONNEL SELECTOR -->
+    <div id="selectorModal" class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-on-surface/50 backdrop-blur-md hidden transition-all duration-300">
+        <div class="bg-surface w-full max-w-md rounded-[2.5rem] shadow-2xl border border-border-color overflow-hidden flex flex-col max-h-[85vh]">
+            <header class="p-6 border-b border-border-color space-y-4">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-xl font-black text-on-surface font-headline tracking-tight" id="selectorTitle">Pilih Personel</h3>
+                        <p class="text-[10px] text-on-surface-variant font-bold uppercase tracking-widest" id="selectorSubtitle"></p>
+                    </div>
+                    <button onclick="document.getElementById('selectorModal').classList.add('hidden')" class="p-2 hover:bg-surface-container-high rounded-full transition-colors">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div class="relative">
+                    <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]">search</span>
+                    <input 
+                        type="text" 
+                        id="personSearch" 
+                        placeholder="Cari nama atau NIK..."
+                        class="w-full bg-surface-container-high rounded-2xl py-3 pl-12 pr-4 text-sm font-bold text-on-surface border-none outline-none focus:ring-2 focus:ring-primary/20"
+                        oninput="window.renderSelectorList()"
+                    />
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-1" id="personListContainer">
+                <!-- Items injected here -->
+            </div>
+
+            <footer class="p-6 border-t border-border-color bg-surface-container-lowest flex items-center gap-4">
+                <button onclick="document.getElementById('selectorModal').classList.add('hidden')" class="flex-1 py-3.5 rounded-2xl font-black text-xs text-on-surface-variant hover:bg-surface-container-high transition-colors uppercase tracking-widest border border-border-color">Batal</button>
+                <button id="saveMappingBtn" onclick="window.saveSelectedMappings()" class="flex-[2] py-3.5 rounded-2xl bg-primary text-white font-black text-xs shadow-xl shadow-primary/20 hover:opacity-90 active:scale-[0.98] transition-all uppercase tracking-widest flex items-center justify-center gap-2">
+                    <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                    <span>Tambah (<span id="selectedCount">0</span>)</span>
+                </button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- PASS TECH DATA -->
+    <script define:vars={{ techniciansData }}>
+        window.techniciansData = techniciansData;
+    </script>
+
+    <style is:global>
+        .tab-btn.active {
+            background: white !important;
+            color: var(--primary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .dark .tab-btn.active {
+            background: var(--surface-container-highest) !important;
+            color: white;
+        }
+        .tab-btn:not(.active) {
+            color: var(--on-surface-variant);
+            opacity: 0.6;
+        }
+        .tab-btn:not(.active):hover {
+            opacity: 1;
+        }
+    </style>
+
+    <script is:inline>
+        let currentTab = 'groups';
+
+        window.switchTab = (tab) => {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            document.querySelectorAll('.content-section').forEach(sec => sec.classList.add('hidden'));
+            document.getElementById(`section-${tab}`).classList.remove('hidden');
+
+             const addText = {
+                groups: 'Link New Gateway',
+                perbaikan: 'Add Analysis Type',
+                jenis: 'Add Order Category',
+                mapping: 'Personnel Mapping',
+                accounts: 'Register New Account',
+                karyawan: 'Tambah Karyawan'
+            };
+            document.getElementById('addBtnText').innerText = addText[tab] || 'Add New';
+
+            // Hide/Show Add button for mapping (it doesn't need an Add button)
+            document.getElementById('addMainBtn').style.display = tab === 'mapping' ? 'none' : 'flex';
+
+            loadData();
+        };
+
+        async function loadData() {
+            if (currentTab === 'groups') loadGroups();
+            else if (currentTab === 'perbaikan') loadSimpleList('perbaikan', 'perbaikanTableBody');
+            else if (currentTab === 'jenis') loadSimpleList('jenis', 'jenisTableBody');
+            else if (currentTab === 'accounts') loadAccounts();
+            else if (currentTab === 'karyawan') loadKaryawan();
+        }
+
+        async function loadAccounts() {
+            const tbody = document.getElementById("accountTableBody");
+            try {
+                const res = await fetch("/api/manage-accounts");
+                const result = await res.json();
+                if (result.status === "success") {
+                    tbody.innerHTML = result.data.map(acc => `
+                        <tr class="hover:bg-surface-container-low transition-colors">
+                            <td class="px-6 py-5"><span class="text-sm font-bold text-on-surface">${acc.username}</span></td>
+                            <td class="px-6 py-5"><span class="text-[10px] font-black px-3 py-1 bg-primary/10 text-primary rounded-full uppercase tracking-widest">${acc.role}</span></td>
+                            <td class="px-6 py-5 text-on-surface-variant text-xs font-medium">${new Date(acc.created_at).toLocaleDateString("id-ID")}</td>
+                            <td class="px-6 py-5 text-right">
+                                <button onclick="window.editAccount('${acc.id}', '${acc.username}', '${acc.role}')" class="p-2 hover:bg-primary/10 text-primary rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">edit</span></button>
+                                <button onclick="window.deleteAccount('${acc.id}', '${acc.username}')" class="p-2 hover:bg-error/10 text-error rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">delete</span></button>
+                            </td>
+                        </tr>
+                    `).join("");
+                }
+            } catch (err) { tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-error italic">Sync Failed</td></tr>'; }
+        }
+
+        let currentSelectorGroupId = null;
+        let currentSelectorRole = null;
+        let selectedNiks = [];
+
+        window.openSelector = (sa_id, role, sa_name) => {
+            currentSelectorGroupId = sa_id;
+            currentSelectorRole = role;
+            selectedNiks = [];
+            
+            document.getElementById('selectorTitle').textContent = `Pilih ${role}`;
+            document.getElementById('selectorSubtitle').textContent = sa_name;
+            document.getElementById('personSearch').value = '';
+            document.getElementById('selectedCount').textContent = '0';
+            
+            window.renderSelectorList();
+            document.getElementById('selectorModal').classList.remove('hidden');
+        };
+
+        window.renderSelectorList = () => {
+            const search = document.getElementById('personSearch').value.toLowerCase();
+            const container = document.getElementById('personListContainer');
+            
+            const filtered = window.techniciansData.filter(t => 
+                t.nama.toLowerCase().includes(search) || 
+                t.nik.toLowerCase().includes(search)
+            );
+
+            container.innerHTML = filtered.map(t => `
+                <label class="flex items-center gap-4 p-3 rounded-2xl hover:bg-primary/5 cursor-pointer transition-colors group ${selectedNiks.includes(t.nik) ? 'bg-primary/5' : ''}">
+                    <div class="relative">
+                        <input type="checkbox" class="sr-only peer" ${selectedNiks.includes(t.nik) ? 'checked' : ''} onchange="window.toggleSelection('${t.nik}')" />
+                        <div class="w-6 h-6 rounded-lg border-2 border-border-color peer-checked:bg-primary peer-checked:border-primary transition-all flex items-center justify-center">
+                            <span class="material-symbols-outlined text-white text-[16px] leading-none ${selectedNiks.includes(t.nik) ? '' : 'hidden'}">check</span>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-[13px] font-black text-on-surface leading-tight">${t.nama}</p>
+                        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest opacity-60">${t.nik}</p>
+                    </div>
+                </label>
+            `).join('');
+        };
+
+        window.toggleSelection = (nik) => {
+            const idx = selectedNiks.indexOf(nik);
+            if (idx >= 0) selectedNiks.splice(idx, 1);
+            else selectedNiks.push(nik);
+            document.getElementById('selectedCount').textContent = selectedNiks.length;
+            window.renderSelectorList();
+        };
+
+        window.removePersonnel = async (mappingId) => {
+            if (!confirm('Hapus personel ini dari sektor?')) return;
+            
+            try {
+                const response = await fetch('/api/manage-korlap', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        action: 'remove', 
+                        id: mappingId 
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    window.location.reload();
+                } else {
+                    alert('Gagal menghapus: ' + result.msg);
+                }
+            } catch (err) {
+                alert('Network error');
+            }
+        };
+
+        window.saveSelectedMappings = async () => {
+            if (selectedNiks.length === 0) return alert('Pilih minimal satu personel');
+            
+            const btn = document.getElementById('saveMappingBtn');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-[18px]">sync</span> Processing...';
+
+            try {
+                const response = await fetch('/api/manage-korlap', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        action: 'add', 
+                        sa_id: currentSelectorGroupId, 
+                        role: currentSelectorRole, 
+                        niks: selectedNiks 
+                    })
+                });
+
+                const result = await response.json();
+                if (result.status === 'success') {
+                    window.location.reload();
+                } else {
+                    alert('Gagal: ' + (result.msg || 'Error'));
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Network error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        };
+
+        // Redundant updateMapping removed in favor of bulk UI
+
+        window.editAccount = (id, user, role) => {
+            document.getElementById("accId").value = id;
+            document.getElementById("accUsername").value = user;
+            document.getElementById("accUsername").disabled = true;
+            document.getElementById("accRole").value = role;
+            document.getElementById("accAction").value = "update";
+            document.getElementById("accountModalTitle").innerText = "Update Access";
+            document.getElementById("accPassword").placeholder = "New secret key (optional)";
+            document.getElementById("accountModal").classList.remove("hidden");
+        };
+
+        window.deleteAccount = async (id, name) => {
+            if (!confirm(`Revoke access for "${name}"?`)) return;
+            const fd = new FormData(); fd.append("id", id); fd.append("action", "delete");
+            await fetch("/api/manage-accounts", { method: "POST", body: fd });
+            loadAccounts();
+        };
+
+        async function loadGroups() {
+            const tbody = document.getElementById("groupTableBody");
+            const res = await fetch("/api/manage-configs?type=groups");
+            const r = await res.json();
+            if (r.status === "success") {
+                tbody.innerHTML = r.data.map(g => `
+                    <tr class="hover:bg-surface-container-low transition-colors group">
+                        <td class="px-6 py-5 font-bold text-on-surface text-sm">${g.service_area}</td>
+                        <td class="px-6 py-5 font-mono text-xs text-primary font-bold">${g.group_id}</td>
+                        <td class="px-6 py-5"><span class="px-3 py-1 rounded-full text-[10px] font-black uppercase ${g.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-surface-container-high'}">${g.is_active ? 'Online' : 'Off'}</span></td>
+                        <td class="px-6 py-5 text-right">
+                            <button onclick='window.editGroup(${JSON.stringify(g).replace(/'/g, "\\'")})' class="p-2 hover:bg-primary/10 text-primary rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">tune</span></button>
+                            <button onclick="window.deleteConfig('groups', ${g.id})" class="p-2 hover:bg-error/10 text-error rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">delete</span></button>
+                        </td>
+                    </tr>
+                `).join("");
+            }
+        }
+
+        async function loadSimpleList(type, tbodyId) {
+            const tbody = document.getElementById(tbodyId);
+            const res = await fetch(`/api/manage-configs?type=${type}`);
+            const r = await res.json();
+            if (r.status === "success") {
+                const labelField = type === 'perbaikan' ? 'jenis_perbaikan' : 'nama_jenis';
+                tbody.innerHTML = r.data.map(item => `
+                    <tr class="hover:bg-surface-container-low transition-colors">
+                        <td class="px-6 py-5 text-[10px] font-black opacity-30">#${item.id}</td>
+                        <td class="px-6 py-5 font-bold text-on-surface text-sm uppercase">${item[labelField]}</td>
+                        <td class="px-6 py-5 text-right">
+                            <button onclick='window.editCommon("${type}", ${JSON.stringify(item).replace(/'/g, "\\'")})' class="p-2 hover:bg-primary/10 text-primary rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">edit</span></button>
+                            <button onclick="window.deleteConfig('${type}', ${item.id})" class="p-2 hover:bg-error/10 text-error rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">delete</span></button>
+                        </td>
+                    </tr>
+                `).join("");
+            }
+        }
+
+        window.editGroup = (g) => {
+            document.getElementById('groupModalTitle').innerText = 'Edit Gateway';
+            document.getElementById('groupAction').value = 'edit';
+            document.getElementById('groupId').value = g.id;
+            document.getElementById('groupServiceArea').value = g.service_area;
+            document.getElementById('groupTelegramId').value = g.group_id;
+            document.getElementById('groupIsActive').value = g.is_active;
+            document.getElementById('groupModal').classList.remove('hidden');
+        };
+
+        window.editCommon = (type, item) => {
+            const label = type === 'perbaikan' ? 'Analisa Perbaikan' : 'Jenis Order';
+            const name = type === 'perbaikan' ? item.jenis_perbaikan : item.nama_jenis;
+            document.getElementById('commonModalTitle').innerText = `Edit ${label}`;
+            document.getElementById('commonLabel').innerText = `${label} Name`;
+            document.getElementById('commonType').value = type;
+            document.getElementById('commonAction').value = 'edit';
+            document.getElementById('commonId').value = item.id;
+            document.getElementById('commonName').value = name;
+            document.getElementById('commonModal').classList.remove('hidden');
+        };
+
+        window.deleteConfig = async (type, id) => {
+            if (!confirm(`Hapus data ini? Aksi ini tidak dapat dibatalkan.`)) return;
+            const fd = new FormData();
+            fd.append('type', type);
+            fd.append('action', 'delete');
+            fd.append('id', id);
+            const res = await fetch("/api/manage-configs", { method: 'POST', body: fd });
+            if ((await res.json()).status === 'success') loadData();
+        };
+
+        // Determine initial tab based on role
+        const userRole = "{role}";
+        if (userRole !== "ADMIN") {
+            // For HD KORLAP and HSA, default to perbaikan tab
+            currentTab = 'perbaikan';
+        }
+
+        // Function to load karyawan data
+        async function loadKaryawan() {
+            const tbody = document.getElementById("karyawanTableBody");
+            try {
+                const res = await fetch("/api/manage-technician");
+                const r = await res.json();
+                if (r.status === "success" && r.data) {
+                    tbody.innerHTML = r.data.map(k => `
+                        <tr class="hover:bg-surface-container-low transition-colors">
+                            <td class="px-6 py-5 font-mono text-xs text-primary font-bold">${k.nik}</td>
+                            <td class="px-6 py-5 font-bold text-on-surface text-sm">${k.nama}</td>
+                            <td class="px-6 py-5 text-xs text-on-surface-variant">${k.sektor || '-'}</td>
+                            <td class="px-6 py-5 text-xs font-mono text-on-surface-variant">${k.tag_telegram || '-'}</td>
+                            <td class="px-6 py-5 text-right">
+                                <button onclick='window.editKaryawan(${JSON.stringify(k).replace(/'/g, "\\'")})' class="p-2 hover:bg-primary/10 text-primary rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">edit</span></button>
+                                <button onclick="window.deleteKaryawan('${k.nik}')" class="p-2 hover:bg-error/10 text-error rounded-xl transition-colors"><span class="material-symbols-outlined text-xl">delete</span></button>
+                            </td>
+                        </tr>
+                    `).join("");
+                }
+            } catch (err) {
+                console.error("Failed to load karyawan:", err);
+            }
+        }
+
+        window.editKaryawan = (k) => {
+            document.getElementById('karyawanModalTitle').innerText = 'Edit Karyawan';
+            document.getElementById('karyawanAction').value = 'edit';
+            document.getElementById('karyawanNik').value = k.nik;
+            document.getElementById('karyawanNik').disabled = true;
+            document.getElementById('karyawanNama').value = k.nama;
+            document.getElementById('karyawanSektor').value = k.sektor || '';
+            document.getElementById('karyawanTag').value = k.tag_telegram || '';
+            document.getElementById('karyawanIdBot').value = k.id_bot_telegram || '';
+            document.getElementById('karyawanModal').classList.remove('hidden');
+        };
+
+        window.deleteKaryawan = async (nik) => {
+            if (!confirm(`Hapus karyawan dengan NIK ${nik}?`)) return;
+            try {
+                const res = await fetch("/api/manage-technician", {
+                    method: "POST",
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'delete', nik })
+                });
+                if ((await res.json()).status === 'success') loadKaryawan();
+            } catch (err) {
+                alert('Gagal menghapus karyawan');
+            }
+        };
+
+        document.addEventListener("DOMContentLoaded", () => {
+            // Set initial tab UI
+            if (userRole !== "ADMIN") {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('tab-perbaikan')?.classList.add('active');
+                document.querySelectorAll('.content-section').forEach(s => s.classList.add('hidden'));
+                document.getElementById('section-perbaikan')?.classList.remove('hidden');
+            }
+
+            loadData();
+
+            document.getElementById('addMainBtn').onclick = () => {
+                if (currentTab === 'groups') {
+                    document.getElementById('groupForm').reset();
+                    document.getElementById('groupAction').value = 'add';
+                    document.getElementById('groupModalTitle').innerText = 'New Gateway';
+                    document.getElementById('groupModal').classList.remove('hidden');
+                 } else if (currentTab === 'accounts') {
+                    document.getElementById("accountForm").reset();
+                    document.getElementById("accId").value = "";
+                    document.getElementById("accUsername").disabled = false;
+                    document.getElementById("accAction").value = "create";
+                    document.getElementById("accountModalTitle").innerText = "Register Account";
+                    document.getElementById("accPassword").placeholder = "Master key required";
+                    document.getElementById("accountModal").classList.remove("hidden");
+                } else if (currentTab === 'karyawan') {
+                    document.getElementById('karyawanForm').reset();
+                    document.getElementById('karyawanAction').value = 'add';
+                    document.getElementById('karyawanNik').disabled = false;
+                    document.getElementById('karyawanModalTitle').innerText = 'Tambah Karyawan';
+                    document.getElementById('karyawanModal').classList.remove('hidden');
+                } else {
+                    const label = currentTab === 'perbaikan' ? 'Analisa Perbaikan' : 'Jenis Order';
+                    document.getElementById('commonForm').reset();
+                    document.getElementById('commonType').value = currentTab;
+                    document.getElementById('commonAction').value = 'add';
+                    document.getElementById('commonModalTitle').innerText = `Add New ${label}`;
+                    document.getElementById('commonLabel').innerText = `${label} Name`;
+                    document.getElementById('commonModal').classList.remove('hidden');
+                }
+            };
+
+            document.getElementById('groupForm').onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                fd.append('type', 'groups');
+                const res = await fetch("/api/manage-configs", { method: 'POST', body: fd });
+                if ((await res.json()).status === 'success') {
+                    document.getElementById('groupModal').classList.add('hidden');
+                    loadGroups();
+                }
+            };
+
+            document.getElementById('commonForm').onsubmit = async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const res = await fetch("/api/manage-configs", { method: 'POST', body: fd });
+                if ((await res.json()).status === 'success') {
+                    document.getElementById('commonModal').classList.add('hidden');
+                    loadData();
+                }
+            };
+            document.getElementById('accountForm')?.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const res = await fetch("/api/manage-accounts", { method: "POST", body: fd });
+                const result = await res.json();
+                if (result.status === "success") {
+                    document.getElementById("accountModal").classList.add("hidden");
+                    loadAccounts();
+                } else alert(result.message);
+            });
+
+            // Karyawan form handler
+            document.getElementById('karyawanForm')?.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const res = await fetch("/api/manage-technician", { method: "POST", body: fd });
+                const result = await res.json();
+                if (result.status === "success") {
+                    document.getElementById("karyawanModal").classList.add("hidden");
+                    loadKaryawan();
+                } else alert(result.message);
+            });
+        });
+    </script>
+
+    <!-- Karyawan Modal -->
+    <div id="karyawanModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden">
+        <div class="bg-surface border border-border-color rounded-2xl w-full max-w-md mx-4 shadow-2xl">
+            <div class="px-6 py-4 border-b border-border-color flex justify-between items-center">
+                <h3 id="karyawanModalTitle" class="text-on-surface text-lg font-extrabold font-headline">Tambah Karyawan</h3>
+                <button onclick="document.getElementById('karyawanModal').classList.add('hidden')" class="p-2 rounded-full text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <form id="karyawanForm" class="p-6 space-y-4">
+                <input type="hidden" id="karyawanAction" name="action" value="add" />
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">NIK <span class="text-error">*</span></label>
+                    <input type="text" id="karyawanNik" name="nik" required class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="e.g., 123456" />
+                </div>
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Nama <span class="text-error">*</span></label>
+                    <input type="text" id="karyawanNama" name="nama" required class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="Nama lengkap" />
+                </div>
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Sektor</label>
+                    <input type="text" id="karyawanSektor" name="sektor" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="e.g., TANJUNGPINANG" />
+                </div>
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">Tag Telegram</label>
+                    <input type="text" id="karyawanTag" name="tag_telegram" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="@username" />
+                </div>
+                <div>
+                    <label class="block text-on-surface-variant text-xs font-bold uppercase mb-1">ID Bot Telegram</label>
+                    <input type="text" id="karyawanIdBot" name="id_bot_telegram" class="w-full px-3 py-2.5 bg-surface-container-high border-none rounded-xl text-on-surface text-sm font-medium focus:ring-2 focus:ring-primary/20" placeholder="Numeric ID" />
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="document.getElementById('karyawanModal').classList.add('hidden')" class="px-5 py-2.5 bg-surface-container-highest text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high rounded-xl text-sm font-bold transition-colors">Cancel</button>
+                    <button type="submit" class="flex items-center gap-2 px-6 py-2.5 bg-primary hover:opacity-90 text-white rounded-xl text-sm font-bold shadow-md shadow-primary/20 transition-all">
+                        <span class="material-symbols-outlined text-[18px]">save</span>
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</Layout>
