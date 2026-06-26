@@ -1,5 +1,5 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import tailwind from '@astrojs/tailwind';
 import node from '@astrojs/node';
 
@@ -11,6 +11,9 @@ export default defineConfig({
   build: {
     inlineStylesheets: 'always',
     assets: 'assets'
+  },
+  image: {
+    service: passthroughImageService()
   },
 
 
