@@ -1,7 +1,6 @@
 import pool from '../db';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import sharp from 'sharp';
 
 export class GantiOdpModel {
 
@@ -32,16 +31,12 @@ export class GantiOdpModel {
         await fs.mkdir(uploadDir, { recursive: true });
 
         const buffer = Buffer.from(await file.arrayBuffer());
-        const ext = '.jpg'; // Fallback ke jpg agar terbaca oleh server
-        const uniqueName = `${Date.now()}_${odp_id}_${field_name}_${Math.random().toString(36).slice(2)}${ext}`;
+        const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+        const uniqueName = `${Date.now()}_${odp_id}_${field_name}_${Math.random().toString(36).slice(2)}.${ext}`;
         const filePath = path.join(uploadDir, uniqueName);
         
-        // Compress image maintaining aspect ratio, max width 1024px, 70% quality jpeg
-        await sharp(buffer)
-            .rotate() // Membaca EXIF dan memutar foto secara otomatis sesuai orientasi aslinya
-            .resize({ width: 1024, withoutEnlargement: true })
-            .jpeg({ quality: 70, mozjpeg: true })
-            .toFile(filePath);
+        // Tulis file asli langsung tanpa sharp untuk menghindari native crash di Proxmox LXC
+        await fs.writeFile(filePath, buffer);
 
         const url = `${baseUrl}/uploads/ganti-odp/${uniqueName}`;
         const relPath = `uploads/ganti-odp/${uniqueName}`;
