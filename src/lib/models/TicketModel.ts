@@ -40,9 +40,9 @@ export class TicketModel {
 
             // Filter by tanggal — closed by jam_close, open by jam_open
             dateConditions.push(`(
-                (jam_close IS NOT NULL AND jam_close != '0000-00-00 00:00:00' AND DATE(jam_close) >= ? AND DATE(jam_close) <= ?)
+                (jam_close IS NOT NULL AND jam_close != '0000-00-00 00:00:00' AND DATE(NULLIF(NULLIF(jam_close, '0000-00-00 00:00:00'), '')) >= ? AND DATE(NULLIF(NULLIF(jam_close, '0000-00-00 00:00:00'), '')) <= ?)
                 OR
-                ((jam_close IS NULL OR jam_close = '0000-00-00 00:00:00') AND DATE(jam_open) >= ? AND DATE(jam_open) <= ?)
+                ((jam_close IS NULL OR jam_close = '0000-00-00 00:00:00') AND DATE(NULLIF(NULLIF(jam_open, '0000-00-00 00:00:00'), '')) >= ? AND DATE(NULLIF(NULLIF(jam_open, '0000-00-00 00:00:00'), '')) <= ?)
             )`);
             dateParams.push(effectiveDateFrom, effectiveDateTo, effectiveDateFrom, effectiveDateTo);
 

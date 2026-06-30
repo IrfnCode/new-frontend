@@ -46,7 +46,7 @@ export const GET: APIRoute = async ({ request }) => {
                 n.service_area, n.posisi
             FROM tiket_simple t
             LEFT JOIN naker n ON (t.nik_teknisi = n.nik OR t.user_id = n.id_bot_telegram)
-            WHERE DATE(t.jam_close) BETWEEN ? AND ?
+            WHERE DATE(NULLIF(NULLIF(t.jam_close, '0000-00-00 00:00:00'), '')) BETWEEN ? AND ?
         `;
         const [rows]: any[] = await pool.query(sql, [start_date, end_date]);
 
@@ -218,7 +218,7 @@ export const GET: APIRoute = async ({ request }) => {
                 HOUR(t.jam_close) AS jam_close_hour
             FROM tiket_simple t
             LEFT JOIN naker n ON (t.nik_teknisi = n.nik OR t.user_id = n.id_bot_telegram)
-            WHERE DATE(t.jam_close) BETWEEN ? AND ?
+            WHERE DATE(NULLIF(NULLIF(t.jam_close, '0000-00-00 00:00:00'), '')) BETWEEN ? AND ?
         `;
         const [timeslotRows]: any[] = await pool.query(timeslotSql, [start_date, end_date]);
 

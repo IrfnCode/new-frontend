@@ -44,7 +44,7 @@ async function simulate() {
                 n.service_area, n.posisi
             FROM tiket_simple t
             LEFT JOIN naker n ON (t.nik_teknisi = n.nik OR t.user_id = n.id_bot_telegram)
-            WHERE DATE(t.jam_close) BETWEEN ? AND ?
+            WHERE DATE(NULLIF(NULLIF(t.jam_close, '0000-00-00 00:00:00'), '')) BETWEEN ? AND ?
         `;
         const [rows] = await pool.query(sql, [start_date, end_date]);
         console.log("Found rows in SQL:", rows.length);

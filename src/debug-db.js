@@ -42,7 +42,7 @@ async function debug() {
         console.log(tickets);
 
         console.log("--- TODAY'S TICKETS ---");
-        const [today] = await pool.query("SELECT count(*) as count FROM tiket_simple WHERE DATE(jam_close) = CURDATE()");
+        const [today] = await pool.query("SELECT count(*) as count FROM tiket_simple WHERE DATE(NULLIF(NULLIF(jam_close, '0000-00-00 00:00:00'), '')) = CURDATE()");
         console.log("Total for today:", today[0].count);
 
         await pool.end();

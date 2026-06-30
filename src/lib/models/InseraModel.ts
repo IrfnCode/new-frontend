@@ -520,7 +520,7 @@ export class InseraModel {
                 LEFT JOIN scraped_work_orders s ON t.no_tiket = s.order_id
                 WHERE t.jam_close IS NOT NULL
                   AND t.jam_close != '0000-00-00 00:00:00'
-                  AND DATE(t.jam_close) = ?
+                  AND DATE(NULLIF(NULLIF(t.jam_close, '0000-00-00 00:00:00'), '')) = ?
                 ORDER BY t.jam_close DESC
             `, [today]);
             console.log(`[InseraModel] Fetched ${rows.length} today's closed tickets from tiket_simple`);

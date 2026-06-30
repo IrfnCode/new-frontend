@@ -7,7 +7,7 @@ export const GET: APIRoute = async () => {
         const todayStr = now.toISOString().split('T')[0];
 
         // 1. Stat Cards
-        const [coHariIni]: any = await pool.query("SELECT COUNT(*) as total FROM tiket_simple WHERE DATE(jam_close) = ?", [todayStr]);
+        const [coHariIni]: any = await pool.query("SELECT COUNT(*) as total FROM tiket_simple WHERE DATE(NULLIF(NULLIF(jam_close, '0000-00-00 00:00:00'), '')) = ?", [todayStr]);
         const [totalTeknisi]: any = await pool.query("SELECT COUNT(DISTINCT nama) as total FROM tiket_simple WHERE nama IS NOT NULL");
         const [totalArea]: any = await pool.query("SELECT COUNT(DISTINCT service_area) as total FROM naker WHERE service_area IS NOT NULL AND service_area != ''");
         const [activeNow]: any = await pool.query("SELECT COUNT(DISTINCT user_id) as total FROM tiket_simple WHERE jam_close >= DATE_SUB(NOW(), INTERVAL 24 HOUR)");
@@ -25,7 +25,7 @@ export const GET: APIRoute = async () => {
             const dStr = d.toISOString().split('T')[0];
             const lab = d.getDate() + "/" + (d.getMonth() + 1);
 
-            const [rows]: any = await pool.query("SELECT COUNT(*) as total FROM tiket_simple WHERE DATE(jam_close) = ?", [dStr]);
+            const [rows]: any = await pool.query("SELECT COUNT(*) as total FROM tiket_simple WHERE DATE(NULLIF(NULLIF(jam_close, '0000-00-00 00:00:00'), '')) = ?", [dStr]);
             harianLabels.push(lab);
             harianCounts.push(rows[0].total);
         }

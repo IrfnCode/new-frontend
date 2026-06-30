@@ -13,7 +13,7 @@ export class ReportModel {
         HOUR(t.jam_close) AS jam_close_hour
       FROM tiket_simple t
       LEFT JOIN naker n ON t.nik_teknisi = n.nik
-      WHERE DATE(t.jam_close) BETWEEN ? AND ?
+      WHERE DATE(NULLIF(NULLIF(t.jam_close, '0000-00-00 00:00:00'), '')) BETWEEN ? AND ?
     `;
     const [rows] = await pool.query(query, [startDate, endDate]);
     return rows;
