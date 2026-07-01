@@ -621,46 +621,99 @@ export class TicketController {
     }
 
     private static async sendMediaGroup(token: string, chat_id: string, fotos: any[]) {
-        const media = fotos.map(f => ({ type: 'photo', media: f.url }));
-        for (let i = 0; i < media.length; i += 10) {
-            const chunk = media.slice(i, i + 10);
-            await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, { chat_id, media: JSON.stringify(chunk) });
+        try {
+            const formData = new FormData();
+            const media = [];
+
+            for (let i = 0; i < fotos.length; i++) {
+                const f = fotos[i];
+                const absPath = path.join(process.cwd(), 'public', f.path);
+                const fileBuffer = await fs.readFile(absPath);
+                const fieldName = `photo_${i}`;
+
+                media.push({
+                    type: 'photo',
+                    media: `attach://${fieldName}`
+                });
+
+                const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
+                formData.append(fieldName, blob, path.basename(f.path));
+            }
+
+            formData.append('chat_id', chat_id);
+            formData.append('media', JSON.stringify(media));
+
+            await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+        } catch (err: any) {
+            console.error("[sendMediaGroup] Direct upload failed, falling back to URL-based send:", err.message);
+            // Fallback: URL-based media group (original code)
+            const media = fotos.map(f => ({ type: 'photo', media: f.url }));
+            await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, { chat_id, media: JSON.stringify(media) }).catch(() => {});
         }
     }
 
     private static async sendReportWithPhotos(token: string, chat_id: string, text: string, files: any[]) {
         try {
+            const formData = new FormData();
+            formData.append('chat_id', chat_id);
+
             if (files.length === 1) {
-                // Send single photo with caption
-                await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
-                    chat_id,
-                    photo: files[0].url,
-                    caption: text,
-                    parse_mode: 'HTML'
+                const f = files[0];
+                const absPath = path.join(process.cwd(), 'public', f.path);
+                const fileBuffer = await fs.readFile(absPath);
+                const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
+
+                formData.append('photo', blob, path.basename(f.path));
+                formData.append('caption', text);
+                formData.append('parse_mode', 'HTML');
+
+                await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
                 });
             } else {
-                // Send media group where the first item has the caption
-                const media = files.map((f, idx) => ({
-                    type: 'photo',
-                    media: f.url,
-                    caption: idx === 0 ? text : undefined,
-                    parse_mode: idx === 0 ? 'HTML' : undefined
-                }));
+                const media = [];
+                for (let i = 0; i < files.length; i++) {
+                    const f = files[i];
+                    const absPath = path.join(process.cwd(), 'public', f.path);
+                    const fileBuffer = await fs.readFile(absPath);
+                    const fieldName = `photo_${i}`;
 
-                await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
-                    chat_id,
-                    media: JSON.stringify(media)
+                    media.push({
+                        type: 'photo',
+                        media: `attach://${fieldName}`,
+                        caption: i === 0 ? text : undefined,
+                        parse_mode: i === 0 ? 'HTML' : undefined
+                    });
+
+                    const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
+                    formData.append(fieldName, blob, path.basename(f.path));
+                }
+
+                formData.append('media', JSON.stringify(media));
+
+                await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
                 });
             }
         } catch (err: any) {
-            console.error("[sendReportWithPhotos] Error sending photo/media group, falling back to text:", err.response?.data || err.message);
-            // Fallback: send text report first, then photos
+            console.error("[sendReportWithPhotos] Direct upload failed, falling back to text + URL media:", err.message);
+            // Fallback: send text report first
             await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
                 chat_id,
                 text,
                 parse_mode: 'HTML'
             }).catch(() => {});
-            await this.sendMediaGroup(token, chat_id, files).catch(() => {});
+            // Then send media group via URL fallback
+            const media = files.map(f => ({ type: 'photo', media: f.url }));
+            await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, { chat_id, media: JSON.stringify(media) }).catch(() => {});
         }
     }
 
