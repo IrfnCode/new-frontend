@@ -2,6 +2,8 @@ import { TicketModel } from '../models/TicketModel';
 import { TechnicianModel } from '../models/TechnicianModel';
 import { GroupModel } from '../models/GroupModel';
 import axios from 'axios';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 export class TicketController {
     private static escapeHTML(str: string): string {
@@ -87,7 +89,7 @@ export class TicketController {
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    static async submitTicket(data: any) {
+    static async submitTicket(data: any, files?: File[]) {
         const tech = await TechnicianModel.getByBotId(data.user_id);
         if (!tech) throw new Error("Technician not found");
 
@@ -187,8 +189,34 @@ export class TicketController {
             }
         }
 
+        // Save evidence files if provided
+        const uploadedMeta: any[] = [];
+        if (files && files.length > 0) {
+            try {
+                const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+                await fs.mkdir(uploadDir, { recursive: true });
+
+                const baseUrl = process.env.URL || 'https://staging.riuz.cloud';
+
+                for (const file of files) {
+                    if (!file || !file.name) continue;
+                    const ext = path.extname(file.name) || '.jpg';
+                    const uniqueName = `${Date.now()}_${ticketId}_${Math.random().toString(36).substring(7)}${ext}`;
+                    const filePath = path.join(uploadDir, uniqueName);
+                    await fs.writeFile(filePath, Buffer.from(await file.arrayBuffer()));
+                    const meta = { url: `${baseUrl}/uploads/${uniqueName}`, path: `uploads/${uniqueName}` };
+                    uploadedMeta.push(meta);
+
+                    // Save to database
+                    await TicketModel.addEvidence(ticketId, meta.url, meta.path);
+                }
+            } catch (evidErr: any) {
+                console.error("[submitTicket] Evidence handling error:", evidErr.message);
+            }
+        }
+
         // Non-blocking notification
-        this.sendNewTicketNotifications(ticketId, ticketData, tech).catch(err => {
+        this.sendNewTicketNotifications(ticketId, ticketData, tech, uploadedMeta).catch(err => {
             console.error("Notification Error:", err.response?.data || err.message);
         });
         return ticketId;
@@ -357,7 +385,7 @@ export class TicketController {
         return uploaded;
     }
 
-    private static async sendNewTicketNotifications(ticketId: number, ticket: any, tech: any) {
+    private static async sendNewTicketNotifications(ticketId: number, ticket: any, tech: any, files?: any[]) {
         const token = process.env.TELEGRAM_BOT_TOKEN;
         const formatDate = (d: any) => new Date(d).toLocaleString('id-ID', { hour12: false }).replace(',', '');
 
@@ -369,7 +397,7 @@ export class TicketController {
             + `📢 Info lengkap telah dikirim ke Group ${this.escapeHTML(tech.service_area || '')}.\n`;
 
         console.log(`[BOT] Sending personal notification to: ${tech.id_bot_telegram}`);
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: tech.id_bot_telegram, text: personalMsg, parse_mode: 'HTML' });
+        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: tech.id_bot_telegram, text: personalMsg, parse_mode: 'HTML' }).catch(() => {});
 
         // 2. Group
         if (tech.service_area) {
@@ -403,7 +431,11 @@ export class TicketController {
                 groupMsg += `\n${this.escapeHTML(tech.tag_telegram || '')}`;
 
                 console.log(`[BOT] Sending group notification to: ${g.group_id}`);
-                await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: g.group_id, text: groupMsg, parse_mode: 'HTML' });
+                if (files && files.length > 0) {
+                    await this.sendReportWithPhotos(token!, g.group_id, groupMsg, files);
+                } else {
+                    await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: g.group_id, text: groupMsg, parse_mode: 'HTML' }).catch(() => {});
+                }
             }
         }
     }
@@ -593,6 +625,42 @@ export class TicketController {
         for (let i = 0; i < media.length; i += 10) {
             const chunk = media.slice(i, i + 10);
             await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, { chat_id, media: JSON.stringify(chunk) });
+        }
+    }
+
+    private static async sendReportWithPhotos(token: string, chat_id: string, text: string, files: any[]) {
+        try {
+            if (files.length === 1) {
+                // Send single photo with caption
+                await axios.post(`https://api.telegram.org/bot${token}/sendPhoto`, {
+                    chat_id,
+                    photo: files[0].url,
+                    caption: text,
+                    parse_mode: 'HTML'
+                });
+            } else {
+                // Send media group where the first item has the caption
+                const media = files.map((f, idx) => ({
+                    type: 'photo',
+                    media: f.url,
+                    caption: idx === 0 ? text : undefined,
+                    parse_mode: idx === 0 ? 'HTML' : undefined
+                }));
+
+                await axios.post(`https://api.telegram.org/bot${token}/sendMediaGroup`, {
+                    chat_id,
+                    media: JSON.stringify(media)
+                });
+            }
+        } catch (err: any) {
+            console.error("[sendReportWithPhotos] Error sending photo/media group, falling back to text:", err.response?.data || err.message);
+            // Fallback: send text report first, then photos
+            await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
+                chat_id,
+                text,
+                parse_mode: 'HTML'
+            }).catch(() => {});
+            await this.sendMediaGroup(token, chat_id, files).catch(() => {});
         }
     }
 
