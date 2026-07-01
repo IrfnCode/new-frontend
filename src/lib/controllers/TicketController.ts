@@ -400,7 +400,7 @@ export class TicketController {
                 if (materials.length > 0) {
                     groupMsg += `\n<b>📦 Material :</b>\n` + materials.map(m => `  - ${m.label}: ${m.val}`).join('\n') + `\n`;
                 }
-                groupMsg += `\nSilahkan Reply kirimkan evidence. ${this.escapeHTML(tech.tag_telegram || '')}`;
+                groupMsg += `\n${this.escapeHTML(tech.tag_telegram || '')}`;
 
                 console.log(`[BOT] Sending group notification to: ${g.group_id}`);
                 await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: g.group_id, text: groupMsg, parse_mode: 'HTML' });
@@ -467,18 +467,23 @@ export class TicketController {
 
     private static async sendEvidenceNotifications(ticket: any, fotos: any[], tech: any) {
         const token = process.env.TELEGRAM_BOT_TOKEN;
-        const msg = `📸 <b>FOTO TELAH DITAMBAHKAN</b>\n\n🎫 <b>Tiket #${ticket.id}</b>\n👤 <b>Teknisi:</b> ${this.escapeHTML(ticket.nama)}\n🎫 <b>No Tiket:</b> ${this.escapeHTML(ticket.no_tiket)}\n📸 <b>Jumlah:</b> ${fotos.length} foto`;
+
+        const caption = `📸 <b>EVIDEN - TIKET #${ticket.id}</b>\n`
+            + `🎫 <b>No Tiket:</b> ${this.escapeHTML(ticket.no_tiket)}\n`
+            + `📡 <b>No INET:</b> ${this.escapeHTML(ticket.no_inet)}\n`
+            + `👤 <b>Teknisi:</b> ${this.escapeHTML(ticket.nama)}\n`
+            + `📸 <b>Jumlah Foto:</b> ${fotos.length}`;
 
         // Personal
-        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: ticket.user_id, text: msg, parse_mode: 'HTML' });
-        await this.sendMediaGroup(token!, ticket.user_id, fotos);
+        await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: ticket.user_id, text: caption, parse_mode: 'HTML' }).catch(() => {});
+        await this.sendMediaGroup(token!, ticket.user_id, fotos).catch(() => {});
 
         // Group
         if (tech?.service_area) {
             const groups = await GroupModel.getByServiceArea(tech.service_area);
             for (const g of groups) {
-                await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: g.group_id, text: msg, parse_mode: 'HTML' });
-                await this.sendMediaGroup(token!, g.group_id, fotos);
+                await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, { chat_id: g.group_id, text: caption, parse_mode: 'HTML' }).catch(() => {});
+                await this.sendMediaGroup(token!, g.group_id, fotos).catch(() => {});
             }
         }
     }
